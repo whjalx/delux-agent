@@ -58,3 +58,11 @@ perfil_chrome_mlbb/
 server/worlds/
 build/
 .cmake/
+
+# Agent workspace
+graphify-out/
+memory/
+dataset_glaive/data/
+dataset_hermes/data/
+dataset_multiturn/data/
+training/dataset_apply/
