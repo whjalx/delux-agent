@@ -1,0 +1,6 @@
+include README.md
+include install.sh
+include install.ps1
+include fish/delux.fish
+recursive-include completions *
+recursive-include delux_agent *.py

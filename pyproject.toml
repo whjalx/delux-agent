@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "delux-agent"
+version = "0.2.0"
+description = "Shell-first AI agent. Autonomous terminal assistant with skills, memory, MCP support, and interactive IDE."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+authors = [
+    {name = "Delux Agent Contributors"}
+]
+keywords = ["ai", "agent", "terminal", "fish", "shell", "assistant", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Terminals",
+]
+
+dependencies = [
+    "rich>=13.0",
+    "textual>=8.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/anomalyco/delux-agent"
+Repository = "https://github.com/anomalyco/delux-agent"
+Issues = "https://github.com/anomalyco/delux-agent/issues"
+
+[project.scripts]
+delux = "delux_agent.cli:main"
+delux-gateway = "delux_agent.gateway:main"
+
+[project.optional-dependencies]
+dataset = ["pandas>=2.0", "pyarrow>=14.0"]
+all = ["delux-agent[dataset]"]
+
+[tool.setuptools.packages.find]
+include = ["delux_agent*"]
+
+[tool.setuptools.package-data]
+delux_agent = ["*.py"]

@@ -1,0 +1,43 @@
+#compdef delux
+
+_delux() {
+    local -a _arguments_options
+    _arguments_options=( -s -S -C )
+
+    local context state line
+
+    _arguments "${_arguments_options[@]}" \
+        '(-h --help)'{-h,--help}'[Show help message]' \
+        '--cwd[Working directory for shell commands]: :_directories' \
+        '--home[DELUX_HOME workspace]: :_directories' \
+        '--max-steps[Maximum autonomous action steps]' \
+        '--quiet[Only print the final answer]' \
+        '--init[Create memory, docs, and skills directories]' \
+        '--context[Print loaded context]' \
+        '--new-skill[Create a blank skill]' \
+        '--summary[Summary for --new-skill]' \
+        '1: :->subcommand' \
+        '*: :->args'
+
+    case $state in
+        subcommand)
+            _values "subcommand" \
+                "setup[Configure AI providers and models]" \
+                "ide[Open interactive terminal IDE]"
+            ;;
+        args)
+            _arguments \
+                '(-h --help)'{-h,--help}'[Show help message]' \
+                '--cwd[Working directory]: :_directories' \
+                '--home[DELUX_HOME]: :_directories' \
+                '--max-steps[Maximum steps]' \
+                '--quiet[Only print final answer]' \
+                '--init[Create workspace directories]' \
+                '--context[Print context]' \
+                '--new-skill[Create skill]' \
+                '--summary[Skill summary]'
+            ;;
+    esac
+}
+
+_delux "$@"

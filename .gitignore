@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.vemv/
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Node
+node_modules/
+package-lock.json
+
+# Go
+go/pkg/mod/
+go.sum
+
+# ML/Data
+*.gguf
+*.safetensors
+*.bin
+*.wav
+*.parquet
+*.zip
+*.tar.gz
+*.apk
+
+# Android/Gradle
+.gradle/
+android/.gradle/
+*.apk
+local.properties
+
+# IDE/OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+logs_gemini/
+logs_google_ai/
+
+# Cache
+.cache/
+.pytest_cache/
+.graphify-cache/
+
+# Large generated
+*.so
+*.jar
+perfil_chrome_mlbb/
+server/worlds/
+build/
+.cmake/

@@ -1,0 +1,50 @@
+# skill:delux-obsidian-brain
+## Summary
+Knowledge Base manager for deep learning and research. Stores technical notes, code examples, guides, and documentation as Markdown files compatible with Obsidian's Knowledge Graph. NOT for personal/general memory.
+
+## When To Use
+- Saving technical solutions, code patterns, and architectural decisions
+- Storing research findings with cross-links between related topics
+- Building a persistent knowledge base that survives session resets
+- Retrieving previously saved technical knowledge
+
+## Usage
+- `add <topic> "<content>" [-l <link1> <link2>]`: Create or append to a note
+- `read <topic>`: Read a note's full content
+- `list`: List all saved notes
+
+## Steps
+1. Receive command (add/read/list) with arguments
+2. For add: resolve topic name, create or append to Markdown file with timestamp
+3. For read: resolve topic name and display full content
+4. For list: show all .md files in the Obsidian vault directory
+5. Support cross-links with [[WikiLink]] syntax for graph navigation
+
+## Response Examples
+
+### Agent invoca la skill
+```json
+{"action":"run_skill","skill":"delux-obsidian-brain","args":"add Kubernetes "Learned: kubectl port-forward enables local access to pods" -l Networking Debugging","timeout":15}
+```
+
+### Skill devuelve resultado
+```
+✅ Creada nueva nota: [[Kubernetes]]
+```
+
+### Prompt injection example (para few-shot learning)
+```
+--- delux-obsidian-brain example ---
+USER: "save that nginx config fix for later"
+AGENT: {"action":"read_file","path":"/etc/nginx/sites-enabled/default"}
+RESULT: (file content)
+AGENT: {"action":"run_skill","skill":"delux-obsidian-brain","args":"add Nginx "Fixed reverse proxy by adding proxy_pass http://localhost:3000" -l WebServer Proxy","timeout":15}
+RESULT: ✅ Agregado contenido a la nota: [[Nginx]]
+NEXT ACTION: {"action":"remember","note":"Saved nginx reverse proxy fix to knowledge base"}
+```
+
+## Caveats
+- Stores notes in `~/.delux/obsi/` (or `$OBSIDIAN_VAULT`)
+- NOT for personal memory — use `remember` action for that
+- Notes persist across sessions and can be opened in Obsidian
+- Topic names are normalized: case-insensitive matching

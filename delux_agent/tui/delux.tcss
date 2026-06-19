@@ -1,0 +1,96 @@
+Screen {
+    background: #0d1117;
+}
+
+Header {
+    background: #161b22;
+    color: #e6edf3;
+    text-style: bold;
+    padding: 0 1;
+    height: 1;
+}
+
+Footer {
+    background: #161b22;
+    color: #8b949e;
+    text-style: dim;
+}
+
+#app-grid {
+    layout: grid;
+    grid-size: 2 2;
+    grid-rows: 1fr auto;
+    grid-columns: 1fr 30;
+}
+
+#chat-container {
+    background: #0d1117;
+    border-right: solid #21262d;
+    padding: 0 1;
+}
+
+RichLog {
+    background: #0d1117;
+}
+
+RichLog > .richlog {
+    padding: 0;
+}
+
+#sidebar {
+    background: #161b22;
+    padding: 0 1;
+    border-left: solid #21262d;
+}
+
+#sidebar-title {
+    text-style: bold;
+    color: #58a6ff;
+    padding: 1 0;
+    border-bottom: solid #21262d;
+}
+
+.sidebar-label {
+    color: #8b949e;
+    padding: 1 0 0 0;
+}
+
+.sidebar-value {
+    color: #e6edf3;
+    padding: 0 0 1 0;
+    border-bottom: solid #21262d;
+}
+
+#input-row {
+    column-span: 2;
+    background: #0d1117;
+    border-top: solid #21262d;
+    height: 3;
+    padding: 0;
+    layout: horizontal;
+}
+
+#mode-indicator {
+    background: #161b22;
+    color: #e6edf3;
+    text-style: bold;
+    padding: 0 1;
+    height: 1;
+    margin: 1 0 1 0;
+    width: 8;
+    text-align: center;
+}
+
+#prompt-input {
+    background: #161b22;
+    color: #e6edf3;
+    border: none;
+    padding: 0 1;
+    margin: 1 0;
+    height: 1;
+    width: 1fr;
+}
+
+#prompt-input:focus {
+    border: none;
+}
