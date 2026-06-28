@@ -66,3 +66,4 @@ dataset_glaive/data/
 dataset_hermes/data/
 dataset_multiturn/data/
 training/dataset_apply/
+dataset_*
