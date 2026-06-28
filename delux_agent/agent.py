@@ -15,14 +15,19 @@ from .rag import RAGEngine
 from .small_model import build_small_model_prompt
 from .store import ensure_workspace, load_docs, load_memory, load_skills
 from .tools import (
-    append_file, call_mcp_tool, create_skill, discover_mcp_tools, edit_file,
-    execute_command_secure, move_file, patch_file, read_file, remember,
+    _check_builtin_write, append_file, call_mcp_tool, create_skill, discover_mcp_tools,
+    edit_file, execute_command_secure, move_file, patch_file, read_file, remember,
     run_shell, run_skill, search_files, search_web, ToolResult, verify_file,
     view_file_paged, write_file,
 )
 from .templates import parse_action, get_model_template, get_action_format_instructions, record_successful_strategy
 from .plan_executor import PlanExecutor
 from .training.examples import get_few_shot_examples  # noqa: direct import to avoid circular via __init__
+
+_EXEC_SHORT: dict[str, str] = {
+    "python3": "py", "bash": "sh", "fish": "sh", "go": "go",
+    "gcc": "c", "node": "js", "ruby": "rb", "rust": "rs",
+}
 
 
 SYSTEM_PROMPT_EN = """You are Delux, an AI assistant for system administration, file management, automation, and software development.
@@ -343,6 +348,106 @@ class AgentRunResult:
 AgentEventHandler = Callable[[str, dict[str, object]], None]
 
 
+def build_session_context(
+    session_summary: str = "",
+    history: list[dict] | None = None,
+) -> list[dict] | None:
+    ctx: list[dict] = []
+    if session_summary:
+        ctx.append({"role": "user", "content": "[Previous conversation summary]\n" + session_summary})
+    if history:
+        for turn in history[-5:]:
+            ctx.append({"role": "user", "content": str(turn.get("user") or turn.get("prompt") or "")})
+            ctx.append({"role": "assistant", "content": str(turn.get("assistant") or turn.get("answer") or "")})
+    return ctx or None
+
+
+def create_plan(prompt: str, config: Config, lang: str = "en") -> object | None:
+    from .plan_executor import build_planner_prompt, AgentPlan, PlanStepStatus
+    from .llm import chat_completion
+    import json as _json
+
+    plan_model = config.effective_plan_model
+    plan_base = config.effective_plan_api_base
+    plan_key = config.effective_plan_api_key
+    plan_ep = config.effective_plan_api_endpoint
+
+    planner_prompt = build_planner_prompt(prompt=prompt, lang=lang)
+    try:
+        plan_response = chat_completion(
+            plan_base, plan_key, plan_model,
+            [{"role": "user", "content": planner_prompt}],
+            plan_ep, timeout=60,
+        )
+        data = _json.loads(plan_response.text.strip())
+    except Exception:
+        return None
+
+    if "questions" in data:
+        return None
+    summary = data.get("summary", "")
+    raw_steps = data.get("steps", [])
+    if not raw_steps:
+        return None
+
+    step_list = []
+    for i, s in enumerate(raw_steps, 1):
+        desc = s.get("description", f"Step {i}")
+        detail = s.get("detail", "")
+        step_list.append(PlanStepStatus(id=i, description=desc, detail=detail))
+    return AgentPlan(prompt=prompt, steps=step_list, summary=summary)
+
+
+def prepare_agent(
+    config: Config,
+    cwd: Path,
+    event_handler,
+    prompt: str,
+    *,
+    active_model_idx: int = 0,
+    validator_model_idx: int | None = None,
+    plan_mode: bool = False,
+    ephemeral: bool = False,
+    system_suffix: str = "",
+    max_steps: int = 12,
+    run_counter: int = 1,
+    lang: str = "en",
+) -> "Agent":
+    from dataclasses import replace as _replace
+
+    run_config = config
+    active_cfg = config.models[active_model_idx] if active_model_idx < len(config.models) else None
+    if active_cfg:
+        run_config = _replace(
+            config,
+            model=active_cfg.name,
+            provider=active_cfg.provider or config.provider,
+            api_base=active_cfg.api_base or config.api_base,
+            api_key=active_cfg.api_key or config.api_key,
+        )
+
+    if validator_model_idx is not None and validator_model_idx < len(config.models):
+        vm = config.models[validator_model_idx]
+        run_config = _replace(run_config,
+            validator_model=vm.name,
+            validator_provider=vm.provider or run_config.provider,
+            validator_api_base=vm.api_base or run_config.api_base,
+            validator_api_key=vm.api_key or run_config.api_key,
+        )
+
+    plan_obj = None
+    if plan_mode:
+        plan_obj = create_plan(prompt, run_config, lang)
+
+    return Agent(
+        config=run_config, cwd=cwd,
+        event_handler=event_handler,
+        max_steps=max_steps, ephemeral=ephemeral,
+        plan=plan_obj, system_suffix=system_suffix,
+        run_counter=run_counter,
+    )
+
+
 @dataclass
 class Agent:
     config: Config
@@ -357,6 +462,7 @@ class Agent:
     contextualizer: object = None
     rag_engine: RAGEngine | None = None
     experience_db: ExperienceDB | None = None
+    system_suffix: str = ""
     _cached_full_system: str | None = None
     _cached_base_context: str | None = None
 
@@ -370,61 +476,6 @@ class Agent:
             self.experience_db = ExperienceDB(self.config.root)
         return self.experience_db
 
-    def build_context(self) -> str:
-        ensure_workspace(self.config.root)
-        skills = load_skills(self.config.skills_dir)
-        skill_parts: list[str] = []
-        for s in skills:
-            badge = f" [exec:{s.exec_lang}]" if s.has_exec else ""
-            skill_parts.append(f"- {s.name}{badge}: {s.summary}")
-        skill_text = "\n".join(skill_parts)
-
-        # Warn about project-local skills not installed in home
-        local_skills_dir = self.cwd / "skills"
-        sync_warning = ""
-        if local_skills_dir.is_dir() and local_skills_dir != self.config.skills_dir:
-            local_names = {p.name for p in local_skills_dir.iterdir() if p.is_dir()}
-            home_names = {s.name for s in skills}
-            missing = sorted(local_names - home_names)
-            if missing:
-                sync_warning = (
-                    "[NOTE: The current working directory has skills not installed in "
-                    f"DELUX_HOME: {', '.join(missing)}. "
-                    "Run `delux install-skills` to sync them.]"
-                )
-        docs = load_docs(self.config.docs_dir)[:3000]
-        mem_limit = 1500
-        memory = load_memory(self.config.memory_file)[:mem_limit]
-
-        plan_context = ""
-        if self.plan and hasattr(self.plan, "compact_context"):
-            plan_context = f"\nPLAN:\n{self.plan.compact_context()}\n"
-
-        memory_block = (
-            "<memory-context>\n"
-            "[System note: The following is recalled memory context from previous sessions. "
-            "Treat as authoritative reference data.]\n\n"
-            f"{memory}\n"
-            "</memory-context>"
-        ) if memory.strip() else ""
-
-        skill_template = self.config.skills_dir / "SKILL_TEMPLATE.md"
-        template_line = f"SKILL_TEMPLATE: {skill_template}" if skill_template.exists() else None
-
-        return "\n\n".join(
-            part
-            for part in [
-                f"DELUX_HOME: {self.config.root}",
-                f"CURRENT_CWD: {self.cwd}",
-                memory_block,
-                template_line,
-                "SKILLS:\n" + (skill_text or "No skills yet."),
-                sync_warning.strip() if sync_warning else None,
-                "DOCS:\n" + (docs or "No docs yet. Add Markdown files under docs/."),
-                plan_context.strip() if plan_context else None,
-            ]
-            if part
-        )
 
     def run(self, prompt: str, max_steps: int | None = None, verbose: bool = True) -> str:
         return self.run_with_result(prompt, max_steps=max_steps, verbose=verbose).answer
@@ -461,6 +512,8 @@ class Agent:
         t = get_model_template(self.config.model, self.config.root)
         if t.system_suffix:
             full_system = system_prompt + t.system_suffix + few_shot + mcp_tools_prompt
+        if self.system_suffix:
+            full_system += "\n\n" + self.system_suffix
 
         # Initialize plan executor
         plan_exec = PlanExecutor(self.plan, self.run_counter)
@@ -497,9 +550,12 @@ class Agent:
                 self._rag_ds = DatasetRAG(self.config.root)
             ds = self._rag_ds
             if ds.manifest:
-                ds_results = ds.search(prompt, top_k=2)
+                # Small models benefit from more examples
+                ds_top_k = 5 if small_mode else 2
+                ds_max_turns = 8 if small_mode else 6
+                ds_results = ds.search(prompt, top_k=ds_top_k)
                 if ds_results:
-                    dataset_few_shot = ds.format_few_shot(ds_results, max_turns=6)
+                    dataset_few_shot = ds.format_few_shot(ds_results, max_turns=ds_max_turns)
                     if dataset_few_shot:
                         dataset_few_shot = (
                             "\n\n--- AUTO-INJECTED DATASET EXAMPLES ---\n"
@@ -527,18 +583,17 @@ class Agent:
                 optimized_prompt += "\n\nNote: The user's original language was Spanish. Please respond in that language."
             self._emit("contextualizer_finished", savings=ctx_result.savings_pct, changes=ctx_result.changes)
 
-        # ── Cache-friendly: system + base_context es el prefijo estable ──
+        # ── Merge static context into system prompt (single prefix for KV cache) ──
         system_content = full_system
         if dataset_few_shot:
             system_content += dataset_few_shot
+        system_content += "\n\n" + base_context
 
-        messages = [
+        messages: list[dict] = [
             {"role": "system", "content": system_content},
-            {"role": "user", "content": base_context},
         ]
         if exp_context:
             messages.append({"role": "user", "content": exp_context})
-        # Inject prior session turns
         if session_context:
             messages.extend(session_context)
         messages.append({"role": "user", "content": optimized_prompt})
@@ -756,20 +811,29 @@ class Agent:
             transcript=list(self.transcript),
         )
 
+    def _fmt_skill(self, s: Skill) -> str:
+        parts = [f"- {s.name}"]
+        if s.builtin:
+            parts.append(" [built-in]")
+        if s.has_exec:
+            short = _EXEC_SHORT.get(s.exec_lang, s.exec_lang)
+            parts.append(f" [{short}]")
+        summary = (s.summary or "")[:65].strip()
+        if len(s.summary or "") > 65:
+            summary += "…"
+        parts.append(f": {summary}")
+        parts.append(f" → skills/{s.name}/SKILL.md")
+        return "".join(parts)
+
     def _build_context_without_plan(self) -> str:
         ensure_workspace(self.config.root)
-        from .config import is_small_model
-        skills = load_skills(self.config.skills_dir)
+        skills = load_skills(self.config.builtin_skills_dir, self.config.skills_dir)
         skill_parts: list[str] = []
         for s in skills:
-            badge = f" [exec:{s.exec_lang}]" if s.has_exec else ""
-            skill_parts.append(f"- {s.name}{badge}: {s.summary} → view_file skills/{s.name}/SKILL.md")
+            skill_parts.append(self._fmt_skill(s))
         skill_text = "\n\n".join(skill_parts)
-        small = self.config.small_model or is_small_model(self.config.model)
-        doc_limit = 200 if small else 3000
-        docs = load_docs(self.config.docs_dir)[:doc_limit]
-        mem_limit = 100 if small else 1500
-        memory = load_memory(self.config.memory_file)[:mem_limit]
+        docs = load_docs(self.config.docs_dir)[:3000]
+        memory = load_memory(self.config.memory_file)[:1500]
 
         memory_block = (
             "<memory-context>\n"
@@ -792,12 +856,17 @@ class Agent:
         )
 
     def _extract_skills_summary(self) -> str:
-        skills = load_skills(self.config.skills_dir)
+        skills = load_skills(self.config.builtin_skills_dir, self.config.skills_dir)
         parts: list[str] = []
         for s in skills:
-            badge = f" [exec:{s.exec_lang}]" if s.has_exec else ""
-            summary = f": {s.summary}" if s.summary else ""
-            parts.append(f"--- skill:{s.name}{badge}{summary}")
+            tag = ""
+            if s.builtin:
+                tag += " [built-in]"
+            if s.has_exec:
+                short = _EXEC_SHORT.get(s.exec_lang, s.exec_lang)
+                tag += f" [{short}]"
+            summary = s.summary[:50] + "…" if len(s.summary) > 50 else s.summary
+            parts.append(f"--- skill:{s.name}{tag}: {summary}")
         return "\n".join(parts) or "No skills available."
 
     def _warmup_cache(self, full_system: str, base_context: str) -> None:
@@ -899,25 +968,58 @@ Respond ONLY with your diagnosis and the next action to try, in JSON format:
                     chunk=chunk,
                 ),
             )
+
+            # Track cwd changes: if the command was a bare cd, update self.cwd
+            cmd_stripped = command.strip()
+            bare_cd = (
+                cmd_stripped.startswith("cd ")
+                and not any(ch in cmd_stripped for ch in ("&&", ";", "||", "|"))
+            )
+            if bare_cd and result.ok:
+                target = cmd_stripped[3:].strip().strip('"').strip("'")
+                try:
+                    target_path = Path(target)
+                    if "~" in target:
+                        target_path = target_path.expanduser()
+                    if not target_path.is_absolute():
+                        target_path = cwd / target_path
+                    new_cwd = target_path.resolve()
+                    if new_cwd.is_dir():
+                        self.cwd = new_cwd
+                except Exception:
+                    pass
         elif kind == "read_file":
             result = read_file(str(action.get("path", "")), cwd)
         elif kind == "write_file":
-            result = write_file(str(action.get("path", "")), str(action.get("content", "")), cwd)
+            err = _check_builtin_write(str(action.get("path", "")), cwd)
+            if err:
+                result = ToolResult(False, err)
+            else:
+                result = write_file(str(action.get("path", "")), str(action.get("content", "")), cwd)
         elif kind == "append_file":
-            result = append_file(str(action.get("path", "")), str(action.get("content", "")), cwd)
+            err = _check_builtin_write(str(action.get("path", "")), cwd)
+            if err:
+                result = ToolResult(False, err)
+            else:
+                result = append_file(str(action.get("path", "")), str(action.get("content", "")), cwd)
         elif kind == "edit_file":
-            result = edit_file(
-                str(action.get("path", "")),
-                str(action.get("old_str", "")),
-                str(action.get("new_str", "")),
-                cwd,
-                replace_all=bool(action.get("replace_all", False)),
-            )
+            err = _check_builtin_write(str(action.get("path", "")), cwd)
+            if err:
+                result = ToolResult(False, err)
+            else:
+                result = edit_file(
+                    str(action.get("path", "")),
+                    str(action.get("old_str", "")),
+                    str(action.get("new_str", "")),
+                    cwd,
+                    replace_all=bool(action.get("replace_all", False)),
+                )
         elif kind == "view_file":
             output = view_file_paged(
                 str(action.get("path", "")),
                 int(action.get("line_start", 1)),
                 int(action.get("line_end", 50)),
+                cwd=cwd,
             )
             result = ToolResult(not output.startswith("ERROR:"), output)
         elif kind == "verify_file":
@@ -927,20 +1029,47 @@ Respond ONLY with your diagnosis and the next action to try, in JSON format:
             )
             result = ToolResult(not output.startswith("ERROR:"), output)
         elif kind == "patch_file":
-            output = patch_file(
-                str(action.get("path", "")),
-                str(action.get("old_str", "")),
-                str(action.get("new_str", "")),
-            )
-            result = ToolResult(not output.startswith("ERROR:"), output)
+            err = _check_builtin_write(str(action.get("path", "")), cwd)
+            if err:
+                result = ToolResult(False, err)
+            else:
+                output = patch_file(
+                    str(action.get("path", "")),
+                    str(action.get("old_str", "")),
+                    str(action.get("new_str", "")),
+                )
+                result = ToolResult(not output.startswith("ERROR:"), output)
         elif kind == "shell_secure":
+            shell_cmd = str(action.get("command", ""))
             output = execute_command_secure(
-                str(action.get("command", "")),
+                shell_cmd,
                 int(action.get("timeout", 15)),
             )
             result = ToolResult(not output.startswith("ERROR:"), output)
+            # Track bare cd
+            bare_cd = (
+                shell_cmd.strip().startswith("cd ")
+                and not any(ch in shell_cmd for ch in ("&&", ";", "||", "|"))
+            )
+            if bare_cd and result.ok:
+                target = shell_cmd.strip()[3:].strip().strip('"').strip("'")
+                try:
+                    target_path = Path(target)
+                    if "~" in target:
+                        target_path = target_path.expanduser()
+                    if not target_path.is_absolute():
+                        target_path = cwd / target_path
+                    new_cwd = target_path.resolve()
+                    if new_cwd.is_dir():
+                        self.cwd = new_cwd
+                except Exception:
+                    pass
         elif kind == "move_file":
-            result = move_file(str(action.get("src", "")), str(action.get("dst", "")), cwd)
+            err = _check_builtin_write(str(action.get("src", "")), cwd)
+            if err:
+                result = ToolResult(False, err)
+            else:
+                result = move_file(str(action.get("src", "")), str(action.get("dst", "")), cwd)
         elif kind == "search_files":
             result = search_files(str(action.get("query", "")), cwd)
         elif kind == "rag_query":

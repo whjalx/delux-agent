@@ -50,4 +50,4 @@ all = ["delux-agent[dataset]"]
 include = ["delux_agent*"]
 
 [tool.setuptools.package-data]
-delux_agent = ["*.py"]
+delux_agent = ["*.py", "skills/**"]

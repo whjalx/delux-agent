@@ -207,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.context:
-        skills = load_skills(config.skills_dir)
+        skills = load_skills(config.builtin_skills_dir, config.skills_dir)
         print(f"\n{BOLD}{MAGENTA}\u25c6 MEMORY{RESET}")
         print(load_memory(config.memory_file))
         print(f"\n{BOLD}{MAGENTA}\u25c6 SKILLS{RESET}")

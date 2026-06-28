@@ -63,6 +63,7 @@ class Skill:
     body: str
     has_exec: bool = False
     exec_lang: str = ""
+    builtin: bool = False
 
 
 def ensure_workspace(root: Path) -> None:
@@ -101,12 +102,20 @@ def load_memory(memory_file: Path) -> str:
     return read_text(memory_file) if memory_file.exists() else DEFAULT_MEMORY
 
 
-def load_docs(docs_dir: Path, limit_per_file: int = 12000) -> str:
+def load_docs(docs_dir: Path, limit_per_file: int = 12000, max_file_size: int = 51200) -> str:
     if not docs_dir.exists():
         return ""
+    skip_names = {"training_examples", "few_shot_examples", "examples"}
     chunks: list[str] = []
     for path in sorted(docs_dir.rglob("*.md")):
-        chunks.append(f"--- docs/{path.relative_to(docs_dir)} ---\n{read_text(path, limit_per_file)}")
+        if path.name.lower().startswith("changelog"):
+            continue
+        stem = path.stem.lower()
+        if any(s in stem for s in skip_names):
+            continue
+        if path.stat().st_size > max_file_size:
+            continue
+        chunks.append(f"--- {path.name} ---\n{read_text(path, limit_per_file)}")
     return "\n\n".join(chunks)
 
 
@@ -117,28 +126,64 @@ def _detect_exec_lang(skill_dir: Path) -> str:
     return ""
 
 
-def load_skills(skills_dir: Path) -> list[Skill]:
-    if not skills_dir.exists():
-        return []
-    skills: list[Skill] = []
-    for path in sorted(skills_dir.glob("*/SKILL.md")):
-        body = read_text(path, 16000)
-        summary = ""
-        for line in body.splitlines():
-            if line.lower().startswith("summary:"):
-                summary = line.split(":", 1)[1].strip()
-                break
-        skill_dir = path.parent
-        exec_lang = _detect_exec_lang(skill_dir)
-        skills.append(Skill(
-            name=skill_dir.name,
-            path=path,
-            summary=summary,
-            body=body,
-            has_exec=bool(exec_lang),
-            exec_lang=exec_lang,
-        ))
-    return skills
+def load_skills(*skills_dirs: Path) -> list[Skill]:
+    seen: set[str] = set()
+    builtin_skills: list[Skill] = []
+    user_skills: list[Skill] = []
+
+    # User dirs (index >= 1) processed first — they have priority over built-in
+    for skills_dir in skills_dirs[1:]:
+        if not skills_dir.exists():
+            continue
+        for path in sorted(skills_dir.glob("*/SKILL.md")):
+            name = path.parent.name
+            if name in seen:
+                continue
+            seen.add(name)
+            body = read_text(path, 16000)
+            summary = ""
+            for line in body.splitlines():
+                if line.lower().startswith("summary:"):
+                    summary = line.split(":", 1)[1].strip()
+                    break
+            skill_dir = path.parent
+            exec_lang = _detect_exec_lang(skill_dir)
+            user_skills.append(Skill(
+                name=name,
+                path=path,
+                summary=summary,
+                body=body,
+                has_exec=bool(exec_lang),
+                exec_lang=exec_lang,
+                builtin=False,
+            ))
+
+    # Builtin dir (index 0) — skip names already overridden by user
+    if skills_dirs and skills_dirs[0].exists():
+        for path in sorted(skills_dirs[0].glob("*/SKILL.md")):
+            name = path.parent.name
+            if name in seen:
+                continue
+            seen.add(name)
+            body = read_text(path, 16000)
+            summary = ""
+            for line in body.splitlines():
+                if line.lower().startswith("summary:"):
+                    summary = line.split(":", 1)[1].strip()
+                    break
+            skill_dir = path.parent
+            exec_lang = _detect_exec_lang(skill_dir)
+            builtin_skills.append(Skill(
+                name=name,
+                path=path,
+                summary=summary,
+                body=body,
+                has_exec=bool(exec_lang),
+                exec_lang=exec_lang,
+                builtin=True,
+            ))
+
+    return builtin_skills + user_skills
 
 
 def upsert_skill(memory_file: Path, name: str, summary: str) -> None:

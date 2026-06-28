@@ -71,6 +71,11 @@ class Config:
     ctx_api_endpoint: str = ""
 
     @property
+    def builtin_skills_dir(self) -> Path:
+        import delux_agent
+        return Path(delux_agent.__file__).parent / "skills"
+
+    @property
     def effective_plan_model(self) -> str:
         return self.plan_model or self.model
 

@@ -7,6 +7,7 @@ import selectors
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -102,6 +103,26 @@ def resolve_path(path: str, base: Path) -> Path:
     return target
 
 
+def _resolve_for_read(path: str, base: Path) -> Path:
+    target = resolve_path(path, base)
+    if target.exists():
+        return target
+    if not path.startswith("/") and not path.startswith("~"):
+        clean = path
+        if clean.startswith("skills/"):
+            clean = clean[len("skills/"):]
+        # Try built-in skills dir
+        fallback = _builtin_skills_dir() / clean
+        if fallback.exists():
+            return fallback
+        # Try user skills dir (~/.delux/skills/)
+        delux_home = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
+        fallback = delux_home / "skills" / clean
+        if fallback.exists():
+            return fallback
+    return target
+
+
 def check_path_safety(target: Path, base: Path, root: Path) -> str | None:
     try:
         target.resolve().relative_to(base.resolve())
@@ -120,6 +141,91 @@ def check_path_safety(target: Path, base: Path, root: Path) -> str | None:
         f"({base}) and DELUX_HOME ({root}). "
         f"Use absolute paths to access files outside these locations."
     )
+
+
+def _builtin_skills_dir() -> Path:
+    import delux_agent
+    return Path(delux_agent.__file__).parent / "skills"
+
+
+def _check_builtin_write(path: str, cwd: Path) -> str | None:
+    target = resolve_path(path, cwd)
+    try:
+        target.resolve().relative_to(_builtin_skills_dir().resolve())
+        return (
+            f"ERROR: Cannot modify `{target.name}` — it is a built-in skill.\n"
+            f"Built-in skills are read-only. To customize a built-in skill, "
+            f"copy it to DELUX_HOME/skills/ and edit the copy instead."
+        )
+    except ValueError:
+        return None
+
+
+def _is_binary(filepath: Path, sample_bytes: int = 1024) -> bool:
+    try:
+        with filepath.open("rb") as f:
+            chunk = f.read(sample_bytes)
+        if b"\x00" in chunk:
+            return True
+        text_chars = bytearray({7, 8, 9, 10, 12, 13, 27} | set(range(0x20, 0x7F)) | set(range(0x80, 0x100)))
+        if chunk.translate(None, text_chars):
+            return True
+        return False
+    except OSError:
+        return False
+
+
+def _read_with_fallback(filepath: Path, max_size: int = 0) -> str:
+    encodings = ["utf-8", "latin-1", "cp1252"]
+    for enc in encodings:
+        try:
+            text = filepath.read_text(encoding=enc)
+            if max_size > 0 and len(text) > max_size:
+                text = text[:max_size]
+                text += f"\n[... truncated at {max_size} chars, {filepath.stat().st_size} total]"
+            return text
+        except UnicodeDecodeError:
+            continue
+        except OSError:
+            break
+    return ""
+
+
+def _atomic_write(filepath: Path, content: str) -> None:
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        suffix=".tmp", prefix="." + filepath.name + ".", dir=filepath.parent
+    )
+    try:
+        os.write(fd, content.encode("utf-8"))
+        os.fsync(fd)
+        os.close(fd)
+        os.replace(tmp_path, filepath)
+    except Exception:
+        os.close(fd)
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _create_backup(filepath: Path) -> Path | None:
+    backup = filepath.with_suffix(filepath.suffix + ".bak")
+    try:
+        shutil.copy2(str(filepath), str(backup))
+        return backup
+    except OSError:
+        return None
+
+
+def _fmt_size(size_bytes: int) -> str:
+    if size_bytes < 1024:
+        return f"{size_bytes}B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f}KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.1f}MB"
 
 
 def _detect_package_manager() -> str | None:
@@ -313,58 +419,87 @@ def run_shell(
 
 
 def read_file(path: str, base: Path) -> ToolResult:
-    target = Path(path)
-    if not target.is_absolute():
-        target = (base / target).resolve()
-    else:
-        target = target.resolve()
-    if not target.exists() or not target.is_file():
+    target = _resolve_for_read(path, base)
+    if not target.exists():
         return ToolResult(False, f"File not found: {path}")
-    return ToolResult(True, target.read_text(encoding="utf-8", errors="replace")[:30000])
+    if not target.is_file():
+        return ToolResult(False, f"Not a file (directory or special): {path}")
+    symlink = "(symlink) " if target.is_symlink() else ""
+    size = target.stat().st_size
+    size_info = f" ({_fmt_size(size)})" if symlink else ""
+    if _is_binary(target):
+        return ToolResult(
+            False,
+            f"Cannot read binary file: {path} ({_fmt_size(size)}). "
+            f"Use shell commands to inspect binary files."
+        )
+    content = _read_with_fallback(target, max_size=30000)
+    if not content and size > 0:
+        return ToolResult(False, f"Failed to decode {path} ({_fmt_size(size)}). File may be binary.")
+    header = f"{symlink}{path}{size_info}"
+    return ToolResult(True, f"{header}\n{content}")
 
 
 def write_file(path: str, content: str, base: Path) -> ToolResult:
-    target = Path(path)
-    if not target.is_absolute():
-        target = (base / target).resolve()
-    else:
-        target = target.resolve()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
-    return ToolResult(True, f"Wrote {target}")
+    target = resolve_path(path, base)
+    existed = target.exists()
+    if existed and _is_binary(target):
+        return ToolResult(
+            False,
+            f"Cannot write to binary file: {path} ({_fmt_size(target.stat().st_size)}). "
+            f"Use shell commands for binary files."
+        )
+    try:
+        _atomic_write(target, content)
+    except OSError as exc:
+        return ToolResult(False, f"Failed to write {path}: {exc}")
+    lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+    verb = "Updated" if existed else "Created"
+    return ToolResult(True, f"{verb} {target} ({lines} lines)")
 
 
 def append_file(path: str, content: str, base: Path) -> ToolResult:
-    target = Path(path)
-    if not target.is_absolute():
-        target = (base / target).resolve()
-    else:
-        target = target.resolve()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("a", encoding="utf-8") as handle:
-        handle.write(content)
-    return ToolResult(True, f"Appended {target}")
+    target = resolve_path(path, base)
+    existed = target.exists()
+    if existed and _is_binary(target):
+        return ToolResult(
+            False,
+            f"Cannot append to binary file: {path} ({_fmt_size(target.stat().st_size)}). "
+            f"Use shell commands for binary files."
+        )
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(content)
+    except OSError as exc:
+        return ToolResult(False, f"Failed to append to {path}: {exc}")
+    added = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+    verb = "Appended to" if existed else "Created and appended to"
+    return ToolResult(True, f"{verb} {target} (+{added} lines)")
 
 
 def edit_file(path: str, old_str: str, new_str: str, base: Path, replace_all: bool = False) -> ToolResult:
-    target = Path(path)
-    if not target.is_absolute():
-        target = (base / target).resolve()
-    else:
-        target = target.resolve()
-    if not target.exists() or not target.is_file():
+    target = resolve_path(path, base)
+    if not target.exists():
         return ToolResult(False, f"File not found: {path}")
+    if not target.is_file():
+        return ToolResult(False, f"Not a file (directory or special): {path}")
+    if _is_binary(target):
+        return ToolResult(
+            False,
+            f"Cannot edit binary file: {path} ({_fmt_size(target.stat().st_size)}). "
+            f"Use shell commands for binary files."
+        )
 
-    content = target.read_text(encoding="utf-8")
+    content = _read_with_fallback(target)
+    if not content and target.stat().st_size > 0:
+        return ToolResult(False, f"Failed to decode {path}. File may be binary or corrupted.")
 
     if old_str not in content:
-        # Try to find closest match and give helpful context
         lines = content.split("\n")
         similar = []
-        old_stripped = old_str.strip()
-        search_tokens = old_stripped.split()
+        search_tokens = old_str.strip().split()
         for i, line in enumerate(lines, 1):
-            # Check if any significant token from old_str appears in the line
             for token in search_tokens:
                 if len(token) >= 3 and token in line:
                     similar.append(f"  Line {i}: {line[:100]}")
@@ -377,10 +512,7 @@ def edit_file(path: str, old_str: str, new_str: str, base: Path, replace_all: bo
         return ToolResult(False, f"edit_file: old_str not found in {path}.{hint}")
 
     if not replace_all and content.count(old_str) > 1:
-        # Count occurrences to help user
         count = content.count(old_str)
-        # Find line numbers of each occurrence
-        lines = content.split("\n")
         locations = []
         pos = 0
         while True:
@@ -392,7 +524,8 @@ def edit_file(path: str, old_str: str, new_str: str, base: Path, replace_all: bo
             pos = idx + 1
         return ToolResult(
             False,
-            f"edit_file: old_str appears {count} times (lines {', '.join(str(l) for l in locations)}). "
+            f"edit_file: old_str appears {count} times (lines {', '.join(str(l) for l in locations[:10])}"
+            f"{'...' if len(locations) > 10 else ''}). "
             f"Provide more surrounding context to make it unique, or set replace_all=true."
         )
 
@@ -400,9 +533,12 @@ def edit_file(path: str, old_str: str, new_str: str, base: Path, replace_all: bo
     if new_content == content:
         return ToolResult(False, f"edit_file: no changes made (old_str and new_str are identical)")
 
-    target.write_text(new_content, encoding="utf-8")
+    _create_backup(target)
+    try:
+        _atomic_write(target, new_content)
+    except OSError as exc:
+        return ToolResult(False, f"Failed to write {path}: {exc}")
 
-    # Build a minimal diff summary
     old_lines = old_str.split("\n")
     new_lines = new_str.split("\n")
     diff_summary = []
@@ -416,40 +552,62 @@ def edit_file(path: str, old_str: str, new_str: str, base: Path, replace_all: bo
         diff_summary.append(f"+ ... ({len(new_lines) - 3} more lines added)")
 
     count_text = "1 occurrence" if not replace_all else f"{content.count(old_str)} occurrences"
-    return ToolResult(True, f"Edited {target} ({count_text}):\n" + "\n".join(diff_summary))
+    return ToolResult(True, f"Edited {target} ({count_text}, backup at {target}.bak):\n" + "\n".join(diff_summary))
 
 
 def move_file(src: str, dst: str, base: Path) -> ToolResult:
-    source = Path(src)
-    dest = Path(dst)
-    if not source.is_absolute():
-        source = (base / source).resolve()
-    else:
-        source = source.resolve()
-    if not dest.is_absolute():
-        dest = (base / dest).resolve()
-    else:
-        dest = dest.resolve()
+    source = resolve_path(src, base)
+    dest = resolve_path(dst, base)
     if not source.exists():
         return ToolResult(False, f"Source not found: {src}")
+    symlink = " (symlink)" if source.is_symlink() else ""
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(source), str(dest))
-    return ToolResult(True, f"Moved {source} -> {dest}")
+    if dest.exists():
+        _create_backup(dest)
+    try:
+        shutil.move(str(source), str(dest))
+    except shutil.Error:
+        try:
+            shutil.copy2(str(source), str(dest))
+            source.unlink()
+        except OSError as exc:
+            return ToolResult(False, f"Failed to move {src} -> {dst}: {exc}")
+    except OSError as exc:
+        return ToolResult(False, f"Failed to move {src} -> {dst}: {exc}")
+    return ToolResult(True, f"Moved {source}{symlink} -> {dest}")
 
 
 def search_files(query: str, base: Path) -> ToolResult:
+    # Prefer ripgrep for content search, fd for filename search
     rg = shutil.which("rg")
+    fd = shutil.which("fd")
     if rg:
-        proc = subprocess.run([rg, "-n", "--hidden", "--glob", "!*.pyc", query, str(base)], text=True, capture_output=True)
+        proc = subprocess.run(
+            [rg, "-n", "--hidden", "--glob", "!*.pyc", "--glob", "!.git", query, str(base)],
+            text=True, capture_output=True, timeout=30,
+        )
         output = (proc.stdout + proc.stderr).strip()
-        return ToolResult(proc.returncode in (0, 1), output[:30000] or "No matches.")
+        if output:
+            return ToolResult(proc.returncode in (0, 1), output[:30000])
+    if fd:
+        proc = subprocess.run(
+            [fd, "--hidden", "--glob", query, "--max-results", "200", str(base)],
+            text=True, capture_output=True, timeout=15,
+        )
+        output = (proc.stdout + proc.stderr).strip()
+        if output:
+            return ToolResult(True, output[:30000])
+    # Python fallback — direct content search
     matches: list[str] = []
     for path in base.rglob("*"):
-        if path.is_file():
-            data = path.read_text(encoding="utf-8", errors="ignore")
-            if query in data:
-                matches.append(str(path))
-    return ToolResult(True, "\n".join(matches) or "No matches.")
+        if path.is_file() and ".git" not in path.parts:
+            try:
+                data = path.read_text(encoding="utf-8", errors="ignore")
+                if query in data:
+                    matches.append(str(path))
+            except OSError:
+                pass
+    return ToolResult(True, "\n".join(matches[:200]) or "No matches.")
 
 
 def create_skill(name: str, summary: str, body: str, root: Path,
@@ -457,8 +615,22 @@ def create_skill(name: str, summary: str, body: str, root: Path,
     slug = slugify(name)
     skills_dir = root / "skills"
     skill_dir = skills_dir / slug
+    builtin = _builtin_skills_dir()
 
-    # ── Detect existing skill with same slug ──
+    # ── Check built-in skills first ──
+    if builtin.exists():
+        builtin_skills = load_skills(builtin)
+        for s in builtin_skills:
+            if s.name == slug:
+                return ToolResult(
+                    False,
+                    f"Built-in skill `{slug}` already exists at {s.path}\n"
+                    f"  Summary: {s.summary}\n"
+                    f"  Use edit_file or patch_file to customize it, "
+                    f"or choose a different name."
+                )
+
+    # ── Detect existing skill with same slug in user dir ──
     if skill_dir.exists():
         existing_skills = load_skills(skills_dir)
         existing_summary = ""
@@ -466,14 +638,14 @@ def create_skill(name: str, summary: str, body: str, root: Path,
             if s.name == slug:
                 existing_summary = s.summary
                 break
-        msg = f"Skill `{slug}` already exists at skills/{slug}/"
+        msg = f"Skill `{slug}` already exists at {skill_dir}/"
         if existing_summary:
             msg += f"\n  Existing summary: {existing_summary}"
         msg += "\n  Use edit_file or patch_file to modify it instead."
         return ToolResult(False, msg)
 
     # ── Fuzzy match by name ──
-    existing_skills = load_skills(skills_dir)
+    existing_skills = load_skills(builtin, skills_dir)
     existing_names = [s.name for s in existing_skills]
     close_matches = difflib.get_close_matches(slug, existing_names, n=3, cutoff=0.6)
     if close_matches:
@@ -520,7 +692,7 @@ def create_skill(name: str, summary: str, body: str, root: Path,
             os.chmod(skill_dir / f"exec.{ext}", 0o755)
 
     upsert_skill(root / "memory" / "memory.md", slug, summary)
-    return ToolResult(True, f"Created skill `{slug}` at skills/{slug}/SKILL.md")
+    return ToolResult(True, f"Created skill `{slug}` at {skill_dir}/SKILL.md")
 
 _AUTO_SECTIONS = {
     "## Steps": "1. Validate input\n2. Execute logic\n3. Return JSON result",
@@ -535,14 +707,21 @@ _AUTO_SECTIONS = {
 
 
 def remember(note: str, root: Path) -> ToolResult:
-    append_note(root / "memory" / "memory.md", note)
-    return ToolResult(True, "Saved note to memory/memory.md")
+    mem_path = root / "memory" / "memory.md"
+    append_note(mem_path, note)
+    return ToolResult(True, f"Saved note to {mem_path}")
 
 
 def run_skill(skill: str, args: str, root: Path, cwd: Path, timeout: int = 30) -> ToolResult:
     slug = slugify(skill)
-    skill_dir = root / "skills" / slug
-    if not skill_dir.exists():
+    # Try user skills first, then built-in
+    skill_dirs = [root / "skills" / slug, _builtin_skills_dir() / slug]
+    skill_dir = None
+    for d in skill_dirs:
+        if d.exists():
+            skill_dir = d
+            break
+    if skill_dir is None:
         return ToolResult(False, f"Skill not found: {skill}")
 
     exec_file = None
@@ -625,20 +804,26 @@ def _run_c_script(exec_file: Path, args: str, cwd: Path, timeout: int) -> ToolRe
                 pass
 
 
-def view_file_paged(path: str, line_start: int = 1, line_end: int = 50) -> str:
-    target = Path(path)
+def view_file_paged(path: str, line_start: int = 1, line_end: int = 50, cwd: Path | None = None) -> str:
+    if cwd is not None:
+        target = _resolve_for_read(path, cwd)
+    else:
+        target = Path(path)
     if not target.exists():
         return f"ERROR: File not found: {path}"
     if not target.is_file():
-        return f"ERROR: Not a file: {path}"
-    try:
-        text = target.read_text(encoding="utf-8", errors="replace")
-    except PermissionError:
-        return f"ERROR: Permission denied: {path}"
-    except OSError as exc:
-        return f"ERROR: Failed to read {path}: {exc}"
+        return f"ERROR: Not a file (directory or special): {path}"
+    if _is_binary(target):
+        return (
+            f"ERROR: Cannot view binary file: {path} "
+            f"({_fmt_size(target.stat().st_size)}). Use shell commands."
+        )
 
-    lines = text.splitlines(keepends=True)
+    content = _read_with_fallback(target)
+    if not content and target.stat().st_size > 0:
+        return f"ERROR: Failed to decode {path}. File may be binary or corrupted."
+
+    lines = content.splitlines(keepends=True)
     total = len(lines)
 
     if line_start < 1:
@@ -646,43 +831,42 @@ def view_file_paged(path: str, line_start: int = 1, line_end: int = 50) -> str:
     if line_end > total:
         line_end = total
     if line_start > total:
-        return (
-            f"ERROR: line_start ({line_start}) exceeds total lines "
-            f"({total}) in {path}"
-        )
+        return f"ERROR: line_start ({line_start}) exceeds total lines ({total}) in {path}"
 
     selected = lines[line_start - 1 : line_end]
     result = "".join(selected).rstrip("\n")
 
+    header = f"[{path} | lines {line_start}-{line_end} of {total} | {_fmt_size(target.stat().st_size)}]\n"
     if line_end < total:
         remaining = total - line_end
-        result += (
-            "\n[CONSOLA: Archivo truncado. Quedan "
-            f"{remaining} líneas más por leer. "
-            "Usa rangos superiores si lo necesitas]"
-        )
-    return result
+        header += f"[... {remaining} more lines below — use higher line_end to read]\n\n"
+    if line_start > 1:
+        header += f"[... {line_start - 1} lines above — use lower line_start to read]\n\n"
+    return header + result
 
 
 def patch_file(path: str, old_str: str, new_str: str) -> str:
     target = Path(path)
+    if not target.is_absolute():
+        target = Path(path).resolve()
     if not target.exists():
         return f"ERROR: File not found: {path}"
     if not target.is_file():
-        return f"ERROR: Not a file: {path}"
+        return f"ERROR: Not a file (directory or special): {path}"
+    if _is_binary(target):
+        return (
+            f"ERROR: Cannot patch binary file: {path} "
+            f"({_fmt_size(target.stat().st_size)}). Use shell commands."
+        )
 
-    try:
-        content = target.read_text(encoding="utf-8")
-    except PermissionError:
-        return f"ERROR: Permission denied: {path}"
-    except OSError as exc:
-        return f"ERROR: Failed to read {path}: {exc}"
+    content = _read_with_fallback(target)
+    if not content and target.stat().st_size > 0:
+        return f"ERROR: Failed to decode {path}. File may be binary or corrupted."
 
     if old_str not in content:
-        lines = content.split("\n")
         similar = []
         search_tokens = old_str.strip().split()
-        for i, line in enumerate(lines, 1):
+        for i, line in enumerate(content.split("\n"), 1):
             for token in search_tokens:
                 if len(token) >= 3 and token in line:
                     similar.append(f"  Line {i}: {line[:100]}")
@@ -711,7 +895,8 @@ def patch_file(path: str, old_str: str, new_str: str) -> str:
             pos = idx + 1
         return (
             f"ERROR: patch_file: old_str appears {count} times (lines "
-            f"{', '.join(str(l) for l in locations)}). "
+            f"{', '.join(str(l) for l in locations[:10])}"
+            f"{'...' if len(locations) > 10 else ''}). "
             f"Provide more surrounding context to make the match unique."
         )
 
@@ -719,8 +904,9 @@ def patch_file(path: str, old_str: str, new_str: str) -> str:
     if new_content == content:
         return "ERROR: patch_file: no changes made (old_str and new_str are identical)"
 
+    _create_backup(target)
     try:
-        target.write_text(new_content, encoding="utf-8")
+        _atomic_write(target, new_content)
     except OSError as exc:
         return f"ERROR: Failed to write {path}: {exc}"
 
@@ -736,31 +922,37 @@ def patch_file(path: str, old_str: str, new_str: str) -> str:
     if len(new_lines) > 3:
         diff.append(f"+ ... ({len(new_lines) - 3} more lines added)")
 
-    return "SUCCESS: Edited " + str(target) + "\n" + "\n".join(diff)
+    return "SUCCESS: Edited " + str(target) + " (backup at " + str(target) + ".bak)\n" + "\n".join(diff)
 
 
 def execute_command_secure(cmd: str, timeout: int = 15) -> str:
     proc = None
     try:
+        env = os.environ.copy()
+        env["DELUX_AGENT"] = "1"
+        env["TERM"] = "dumb"
         proc = subprocess.Popen(
             cmd,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            env=env,
         )
         stdout, _ = proc.communicate(timeout=timeout)
         output = stdout.decode("utf-8", errors="replace").strip()
+        output = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', output)
+        output = re.sub(r'\x1b\([0-9A-Za-z]', '', output)
         if proc.returncode != 0:
             return f"ERROR: Command failed (exit code {proc.returncode}): {output}"
-        return output
+        return output or "(no output)"
     except subprocess.TimeoutExpired:
         if proc:
             proc.kill()
             proc.wait()
         return (
-            "ERROR: [ERROR de la Consola Delux: El comando tardó demasiado "
-            "y fue cancelado automáticamente para evitar bloqueos. "
-            "Si es un servidor, córrelo en segundo plano o revisa si hay bucles infinitos]"
+            "ERROR: Command timed out — execution exceeded "
+            f"{timeout}s limit. For long-running commands, "
+            "consider using shell background mode (&) or increasing timeout."
         )
     except OSError as exc:
         return f"ERROR: Failed to execute command: {exc}"
@@ -819,14 +1011,39 @@ _VERIFIERS: dict[str, list[str]] = {
     ".py": ["python3", "-c", "import ast, sys; ast.parse(open(sys.argv[1]).read()); print('OK')", "--"],
     ".sh": ["bash", "-n"],
     ".bash": ["bash", "-n"],
+    ".zsh": ["zsh", "-n"],
     ".js": ["node", "--check"],
+    ".mjs": ["node", "--check"],
+    ".ts": ["npx", "--yes", "tsc", "--noEmit"],
     ".json": ["python3", "-c", "import json, sys; json.load(open(sys.argv[1])); print('OK')", "--"],
-    ".yaml": ["python3", "-c", "import json, sys; print('syntax check skipped (no pyyaml)')", "--"],
-    ".yml": ["python3", "-c", "import json, sys; print('syntax check skipped (no pyyaml)')", "--"],
+    ".yaml": ["python3", "-c",
+              "try:\n import yaml\nexcept ImportError:\n import json, sys; sys.exit(0)\n"
+              "with open(sys.argv[1]) as f: yaml.safe_load(f); print('OK')", "--"],
+    ".yml": ["python3", "-c",
+             "try:\n import yaml\nexcept ImportError:\n import json, sys; sys.exit(0)\n"
+             "with open(sys.argv[1]) as f: yaml.safe_load(f); print('OK')", "--"],
     ".c": ["gcc", "-fsyntax-only"],
     ".cpp": ["g++", "-fsyntax-only"],
+    ".cc": ["g++", "-fsyntax-only"],
+    ".cxx": ["g++", "-fsyntax-only"],
     ".go": ["go", "vet"],
     ".rs": ["rustc", "--edition", "2021", "--crate-type", "lib"],
+    ".toml": ["python3", "-c",
+              "import sys\n"
+              "try:\n import tomllib\nexcept ImportError:\n"
+              " try:\n  import tomli as tomllib\n"
+              " except ImportError:\n  sys.exit(0)\n"
+              "with open(sys.argv[1],'rb') as f: tomllib.load(f); print('OK')", "--"],
+    ".html": ["python3", "-c",
+              "import sys\ntry:\n from html.parser import HTMLParser\n"
+              " p=HTMLParser()\n p.feed(open(sys.argv[1]).read()); p.close(); print('OK')\n"
+              "except Exception as e: print(f'ERROR:{e}'); sys.exit(1)", "--"],
+    ".css": ["python3", "-c",
+             "import sys\ntry:\n import cssutils\nexcept ImportError:\n sys.exit(0)\n"
+             "cssutils.parseFile(sys.argv[1]); print('OK')", "--"],
+    ".xml": ["python3", "-c",
+             "import sys, xml.etree.ElementTree as ET\ntry:\n ET.parse(sys.argv[1]); print('OK')\n"
+             "except Exception as e: print(f'ERROR:{e}'); sys.exit(1)", "--"],
 }
 
 

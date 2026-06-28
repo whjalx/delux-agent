@@ -436,27 +436,27 @@ def _generate_few_shot_examples(root: Path) -> None:
 
 
 def _install_default_skills(root: Path) -> None:
-    import shutil
-    dst = root / "skills"
-    dst.mkdir(parents=True, exist_ok=True)
-    src = Path(__file__).resolve().parent.parent.parent / "skills"
-    for child in sorted(src.iterdir()):
-        if not child.is_dir() or child.name.startswith("."):
-            continue
-        target = dst / child.name
-        if target.exists():
-            continue
-        shutil.copytree(str(child), str(target), dirs_exist_ok=False)
-        print(f"  {GREEN}Installed skill: {child.name}{RESET}")
+    skills_dir = root / "skills"
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    dest = skills_dir / "SKILL_TEMPLATE.md"
+    if not dest.exists():
+        import delux_agent
+        src = Path(delux_agent.__file__).parent / "skills" / "SKILL_TEMPLATE.md"
+        if src.exists():
+            import shutil
+            shutil.copy2(str(src), str(dest))
+            print(f"  {GREEN}Installed SKILL_TEMPLATE.md{RESET}")
+    print(f"  {GREEN}Built-in skills loaded from package ({delux_agent.__version__}){RESET}")
 
 
 def _install_skill_template(root: Path) -> None:
     skills_dir = root / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
-    import shutil
-    template_src = Path(__file__).resolve().parent.parent.parent / "skills" / "SKILL_TEMPLATE.md"
+    import delux_agent
+    template_src = Path(delux_agent.__file__).parent / "skills" / "SKILL_TEMPLATE.md"
     template_dst = skills_dir / "SKILL_TEMPLATE.md"
-    if template_src.exists():
+    if template_src.exists() and not template_dst.exists():
+        import shutil
         shutil.copy2(str(template_src), str(template_dst))
 
 
@@ -480,7 +480,7 @@ def _build_base_library(target_path: Path) -> None:
     ]
 
     subnets = ['192.168.1.0/24', '10.0.0.0/8', '172.16.0.0/12']
-    dirs = ['/var/www', '/home/jcast/delux', '/etc/nginx']
+    dirs = ['/var/www', '/opt/app', '/etc/nginx']
     errors = ['Panic', 'Segfault', 'Timeout', 'OOM', 'DiskFull']
     services = ['nginx', 'postgresql', 'ssh', 'docker', 'redis']
     files = ['main.py', 'app.js', 'utils.go', 'config.json']
@@ -626,7 +626,7 @@ def _remove_model_from_config(root: Path, model_name: str) -> None:
 
 def _print_context(root: Path) -> None:
     config = load_config(root)
-    skills = load_skills(config.skills_dir)
+    skills = load_skills(config.builtin_skills_dir, config.skills_dir)
     print("")
     print("  Final context")
     print("  " + "=" * 30)

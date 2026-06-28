@@ -152,7 +152,7 @@ def _get_google_models(api_key: str) -> list[str]:
 
 def _print_context(root: Path) -> None:
     config = load_config(root)
-    skills = load_skills(config.skills_dir)
+    skills = load_skills(config.builtin_skills_dir, config.skills_dir)
     print("")
     print("Final context")
     print("=============")
@@ -474,7 +474,7 @@ def _build_base_library(target_path: Path) -> None:
     ]
     
     subnets = ['192.168.1.0/24', '10.0.0.0/8', '172.16.0.0/12']
-    dirs = ['/var/www', '/home/jcast/delux', '/etc/nginx']
+    dirs = ['/var/www', '/opt/app', '/etc/nginx']
     errors = ['Panic', 'Segfault', 'Timeout']
     services = ['nginx', 'postgresql', 'ssh']
     files = ['main.py', 'app.js', 'utils.go']
