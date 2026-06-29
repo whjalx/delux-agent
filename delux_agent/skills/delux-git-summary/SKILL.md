@@ -20,12 +20,12 @@ Run inside a git repository: `delux-git-summary`
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-git-summary","args":"","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 === Git Dashboard ===
 Branch: main (upstream: origin/main)
@@ -40,7 +40,7 @@ Recent History:
 * e4f5g6h - Add tests (3 hours ago)
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-git-summary example ---
 USER: "what's the current git status?"

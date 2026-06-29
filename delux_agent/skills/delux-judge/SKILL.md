@@ -9,6 +9,11 @@ Delux Judge — impartial self-validation and critique. Reviews the agent's own 
 - Before presenting results to the user
 - To catch subtle errors the agent might miss
 
+## Usage
+delux-judge <json_action>
+
+Validates a proposed agent action for safety, correctness, and completeness.
+
 ## Steps
 1. **Review**: Read back the actions taken and their results
 2. **Validate**: Check correctness against the original request

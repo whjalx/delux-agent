@@ -8,6 +8,9 @@ Delux Gateway — bidirectional Telegram bridge. Runs Delux as a Telegram bot fo
 - Managing infrastructure from anywhere
 - Interactive sessions via Telegram DM
 
+## Usage
+delux-gateway start | delux-gateway status | delux-gateway stop
+
 ## Setup
 1. Create a bot via @BotFather on Telegram
 2. Configure `~/.delux/telegram.json`:

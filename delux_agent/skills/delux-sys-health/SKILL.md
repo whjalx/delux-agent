@@ -20,12 +20,12 @@ Run without arguments: `delux-sys-health`
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-sys-health","args":"","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 === System Health Report ===
 OS: Linux 6.2.0-35-generic (x86_64)
@@ -37,7 +37,7 @@ lo               UNKNOWN        127.0.0.1/8
 eth0             UP             192.168.1.100/24
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-sys-health example ---
 USER: "check system health before the deployment"

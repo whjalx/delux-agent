@@ -20,12 +20,12 @@ Run in any directory: `delux-fast-tree`
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-fast-tree","args":"","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 . (Project Root)
 ├── src/
@@ -38,7 +38,7 @@ Run in any directory: `delux-fast-tree`
 └── README.md
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-fast-tree example ---
 USER: "show me the project structure"

@@ -27,12 +27,12 @@ delux-dataset-rag clear                     Reset the entire index
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-dataset-rag","args":"few-shot write a python script to parse CSV","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 --- Dataset RAG Few-Shot Examples ---
 
@@ -46,7 +46,7 @@ AGENT calls: {"name": "write_file", "arguments": {"path": "csv_cleaner.py", ...}
 TOOL RESULT: File written
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-dataset-rag example ---
 USER: "find similar agent traces for deploying nginx"

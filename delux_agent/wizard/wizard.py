@@ -36,6 +36,22 @@ PRESETS = [
     ProviderPreset("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-4.1-mini"),
     ProviderPreset("groq", "Groq", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
     ProviderPreset(
+        "opencode-zen",
+        "OpenCode Zen",
+        "https://opencode.ai/zen/v1",
+        "big-pickle",
+        True,
+        "OpenCode Zen - tested & verified models. Sign in at https://opencode.ai/zen. Endpoint: https://opencode.ai/zen/v1/chat/completions",
+    ),
+    ProviderPreset(
+        "opencode-go",
+        "OpenCode Go",
+        "https://opencode.ai/zen/go/v1",
+        "qwen3.6-plus",
+        True,
+        "OpenCode Go - low cost subscription. Endpoint: https://opencode.ai/zen/go/v1/chat/completions",
+    ),
+    ProviderPreset(
         "lmstudio",
         "LM Studio local",
         "http://localhost:1234/v1",

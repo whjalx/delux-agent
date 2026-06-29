@@ -19,12 +19,12 @@ delux-search-expert <query> [path]
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-search-expert","args":"API_KEY .","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 🔍 Searching for 'API_KEY' in ....
 
@@ -34,7 +34,7 @@ src/config.py
 5-
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-search-expert example ---
 USER: "find where the database connection is configured"

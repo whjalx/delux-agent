@@ -20,17 +20,17 @@ delux-writer-pro <path> <content>
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-writer-pro","args":"src/main.py \"print('Hello World')\"","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 SUCCESS: File 'src/main.py' written successfully (21 bytes).
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-writer-pro example ---
 USER: "create a config file at /etc/myapp/config.yml"

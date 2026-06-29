@@ -28,17 +28,17 @@ delux-rag remove <path>          Remove a file from the index
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-rag","args":"index /home/user/project","timeout":60}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 Indexed 47 files (312 chunks)
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-rag example ---
 USER: "find all database connection code in the project"

@@ -23,12 +23,12 @@ Default size: 100MB. Specify a custom size as the first argument.
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-disk-benchmark","args":"200","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  🚀 DELUX DISK BENCHMARK (C Engine)                  ┃
@@ -43,7 +43,7 @@ Buffer size: 1 MB
 Benchmark Finished.
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-disk-benchmark example ---
 USER: "how fast is the disk on this server?"

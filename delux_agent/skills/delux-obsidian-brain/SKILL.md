@@ -22,24 +22,24 @@ Knowledge Base manager for deep learning and research. Stores technical notes, c
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-obsidian-brain","args":"add Kubernetes "Learned: kubectl port-forward enables local access to pods" -l Networking Debugging","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
-✅ Creada nueva nota: [[Kubernetes]]
+✅ Created new note: [[Kubernetes]]
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-obsidian-brain example ---
 USER: "save that nginx config fix for later"
 AGENT: {"action":"read_file","path":"/etc/nginx/sites-enabled/default"}
 RESULT: (file content)
 AGENT: {"action":"run_skill","skill":"delux-obsidian-brain","args":"add Nginx "Fixed reverse proxy by adding proxy_pass http://localhost:3000" -l WebServer Proxy","timeout":15}
-RESULT: ✅ Agregado contenido a la nota: [[Nginx]]
+RESULT: ✅ Added content to note: [[Nginx]]
 NEXT ACTION: {"action":"remember","note":"Saved nginx reverse proxy fix to knowledge base"}
 ```
 

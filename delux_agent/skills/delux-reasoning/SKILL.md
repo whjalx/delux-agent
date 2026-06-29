@@ -9,6 +9,11 @@ Delux structured reasoning. Breaks down complex problems step-by-step with struc
 - Planning architecture decisions
 - Analyzing trade-offs between solutions
 
+## Usage
+delux-reasoning "analyze: <problem description>"
+
+Breaks down the problem into sub-problems with confidence scores and fallback strategies.
+
 ## Steps
 1. **Define**: Restate the problem clearly with all known constraints
 2. **Deconstruct**: Break into sub-problems, identify dependencies
@@ -49,7 +54,7 @@ Delux structured reasoning. Breaks down complex problems step-by-step with struc
 }
 ```
 
-### Prompt injection example (for few-shot learning)
+### Prompt injection example
 ```
 --- delux-reasoning example ---
 USER: "analyze: server is running slow"

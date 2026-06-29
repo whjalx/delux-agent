@@ -1,13 +1,23 @@
 # skill:delux-browser
 ## Summary
-Browser automation via Playwright. Navigate pages, click elements, extract data, take screenshots, and fill forms programmatically.
+Stateless one-shot browser automation via Playwright. Use for SINGLE operations — one extraction, one screenshot, one form fill. Launches and closes browser per call.
 
-## When To Use
-- Scraping dynamic web pages (SPAs, JS-rendered content)
-- Automating web workflows (login, form fill, data export)
-- Taking screenshots of pages or specific elements
-- Extracting structured data from tables and lists
-- Testing web app behavior
+## When To Use (USE THIS SKILL FOR)
+- ONE-TIME page text extraction: "get me the text from this URL"
+- ONE-TIME screenshot: "screenshot this page"
+- ONE-TIME data extraction from tables/lists
+- ONE-TIME form fill / click on a single page
+- Static scraping where no session/cookies are needed across pages
+
+## When NOT To Use (USE NATIVE BROWSER ACTIONS INSTEAD)
+- Multi-step workflows: login → navigate → extract data
+- Interactive browsing across multiple pages
+- Any task where you need the browser to stay open between actions
+- For those cases, use: browser_navigate, browser_click, browser_type, browser_snapshot, browser_scroll, browser_back
+
+## Difference
+- This skill: STATELESS — launches browser, does ONE action, closes. Good for simple one-offs.
+- Native browser actions (`browser_navigate`, `browser_click`, etc.): STATEFUL — browser stays open, maintains cookies/session, multiple steps.
 
 ## Usage
 delux-browser <action> [url] [args]

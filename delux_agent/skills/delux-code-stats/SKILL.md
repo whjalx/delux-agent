@@ -19,12 +19,12 @@ Run in any project directory: `delux-code-stats`
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-code-stats","args":"","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 === Codebase Statistics ===
 Total Files: 42
@@ -36,7 +36,7 @@ Language Distribution:
   HTML         :   500 lines ( 9.6%) in    5 files
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-code-stats example ---
 USER: "how big is this project?"

@@ -1,90 +1,91 @@
-# SKILL TEMPLATE — Cómo crear una skill para Delux
+# SKILL TEMPLATE — How to Create a Skill for Delux
 
-Cada skill vive en su propio directorio dentro de `skills/<nombre-de-la-skill>/`.
-Toda skill tiene **3 partes obligatorias**:
+Each skill lives in its own directory inside `skills/<skill-name>/`.
+Every skill has **3 required parts**:
 
-## 1. `SKILL.md` — Documentación (obligatorio)
+## 1. `SKILL.md` — Documentation (required)
 
-Archivo Markdown que describe qué hace la skill, cuándo usarla, y cómo responde.
+Markdown file describing what the skill does, when to use it, and how it responds.
 
-Estructura exacta que debe tener:
+Exact structure required:
 
 ```markdown
-# skill:<nombre-de-la-skill>
+# skill:<skill-name>
 ## Summary
-Una línea describiendo qué hace esta skill.
+One line describing what this skill does.
 
 ## When To Use
-- Caso de uso 1
-- Caso de uso 2
+- Use case 1
+- Use case 2
 
 ## Usage
-<nombre> <argumentos>
+<name> <arguments>
 
 ## Steps
-1. Paso 1
-2. Paso 2
+1. Step 1
+2. Step 2
 
-## Response Examples (OBLIGATORIO)
+## Response Examples (REQUIRED)
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
-{"action":"run_skill","skill":"<nombre>","args":"<argumentos>","timeout":30}
-```
+{"action":"run_skill","skill":"<name>","args":"<arguments>","timeout":30}
+\```
 
-### Skill devuelve resultado
+### Skill returns result
 ```json
 {
-  "campo": "valor",
+  "field": "value",
   "status": "ok"
 }
-```
+\```
 
-### Prompt injection example (para few-shot learning, OBLIGATORIO)
-```
---- <nombre> example ---
-USER: "<ejemplo de input del usuario>"
-AGENT: {"action":"run_skill","skill":"<nombre>","args":"<args>","timeout":30}
-RESULT: {"campo": "valor", "status": "ok"}
+### Prompt injection example
+\```
+--- <name> example ---
+USER: "<example user input>"
+AGENT: {"action":"run_skill","skill":"<name>","args":"<args>","timeout":30}
+RESULT: {"field": "value", "status": "ok"}
 NEXT ACTION: {"action":"shell/final/read_file","..."}
+\```
 ```
 
 ## Caveats
-- Advertencias importantes
+- Important warnings
 ```
 
-## 2. `exec.py` (o `exec.bash`, `exec.go`, etc.) — Script ejecutable (recomendado)
+## 2. `exec.py` (or `exec.bash`, `exec.go`, etc.) — Executable script (recommended)
 
-Script que ejecuta la lógica de la skill. Recibe argumentos por línea de comandos y devuelve JSON por stdout.
+Script that executes the skill logic. Receives command-line arguments and returns JSON via stdout.
 
-Estructura mínima:
+Minimal structure:
 
 ```python
 import sys, json
 
-def mi_skill(args: list[str]) -> dict:
-    # Lógica aquí
-    return {"status": "ok", "result": "hecho"}
+def my_skill(args: list[str]) -> dict:
+    # Logic here
+    return {"status": "ok", "result": "done"}
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    print(json.dumps(mi_skill(args)))
+    print(json.dumps(my_skill(args)))
 ```
 
-## 3. Response JSON (obligatorio para todas las skills así no tengan exec)
+## 3. Response JSON (required for all skills even without exec)
 
-Toda skill DEBE documentar en `SKILL.md`:
-- El JSON **entrada**: qué envía el agente para invocarla (`{"action":"run_skill","skill":"...","args":"..."}`)
-- El JSON **salida**: qué devuelve la skill cuando se ejecuta
-- Un **ejemplo de inyección**: el flujo completo USER → AGENT → RESULT → NEXT ACTION
+Every skill MUST document in `SKILL.md`:
+- **Input JSON**: what the agent sends to invoke it (`{"action":"run_skill","skill":"...","args":"..."}`)
+- **Output JSON**: what the skill returns when executed
+- **Prompt injection example**: the full flow USER → AGENT → RESULT → NEXT ACTION
 
-Esto permite que hasta modelos pequeños aprendan el formato exacto viendo el archivo.
+This allows even small models to learn the exact format by reading the file.
 
-## Regla de creación automática
+## Automatic Creation Rule
 
-Cuando el agente necesita crear una skill nueva:
-1. Lee este archivo (SKILL_TEMPLATE) para entender el formato
-2. Lee alguna skill existente en SKILLS como ejemplo de referencia
-3. Usa `create_skill` para crear el directorio y SKILL.md automáticamente
-4. Si aplica, usa `write_file` para crear `exec.py` con la lógica
-5. Guarda la skill en memoria con `remember`
+When the agent needs to create a new skill:
+1. Read this file (SKILL_TEMPLATE) to understand the format
+2. Read an existing skill in SKILLS as a reference example
+3. Use `create_skill` to create the directory and SKILL.md automatically
+4. If applicable, use `write_file` to create `exec.py` with the logic
+5. Save the skill to memory with `remember`

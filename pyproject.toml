@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "delux-agent"
-version = "0.2.0"
-description = "Shell-first AI agent. Autonomous terminal assistant with skills, memory, MCP support, and interactive IDE."
+version = "0.3.0"
+description = "Shell-first AI agent. Autonomous terminal assistant with skills, memory, MCP support, interactive IDE, web browsing, vision, subagents, cron, kanban, and computer use."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
@@ -43,8 +43,9 @@ delux = "delux_agent.cli:main"
 delux-gateway = "delux_agent.gateway:main"
 
 [project.optional-dependencies]
+browser = ["playwright>=1.40"]
 dataset = ["pandas>=2.0", "pyarrow>=14.0"]
-all = ["delux-agent[dataset]"]
+all = ["delux-agent[browser,dataset]"]
 
 [tool.setuptools.packages.find]
 include = ["delux_agent*"]

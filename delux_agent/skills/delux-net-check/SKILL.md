@@ -20,12 +20,12 @@ Run without arguments: `delux-net-check`
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-net-check","args":"","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 === Network Diagnostics ===
 Localhost (127.0.0.1): OK
@@ -37,7 +37,7 @@ External Connectivity:
 Public IP: 203.0.113.42
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-net-check example ---
 USER: "check if the server has internet access"

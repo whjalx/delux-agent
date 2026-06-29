@@ -9,6 +9,11 @@ Delux Oracle — knowledge retrieval and synthesis. Queries documentation, memor
 - Generating comprehensive reports on a subject
 - Validating assumptions against stored knowledge
 
+## Usage
+delux-oracle "<query>"
+
+Searches all available knowledge sources (memory, docs, skills) for the given query.
+
 ## Steps
 1. **Query**: Search memory, docs, skills, and installed tools
 2. **Cross-reference**: Compare information from multiple sources
@@ -38,8 +43,8 @@ Delux Oracle — knowledge retrieval and synthesis. Queries documentation, memor
     "status": "complete",
     "confidence": 0.9,
     "findings": [
-      {"source": "docs/deployment.md", "claim": "Deployment uses GitHub Actions", "confidence": "extracted"},
-      {"source": "memory/memory.md", "claim": "Server is at 192.168.1.100", "confidence": "extracted"}
+      {"source": "memory/memory.md", "file_path": "~/.delux/memory/memory.md", "matches": [{"line_num": 15, "text": "Deployment uses GitHub Actions"}], "match_count": 1},
+      {"source": "docs/deployment.md", "file_path": "~/.delux/docs/deployment.md", "matches": [{"line_num": 3, "text": "Server is at..."}], "match_count": 1}
     ]
   }
 }

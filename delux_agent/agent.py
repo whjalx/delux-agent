@@ -20,14 +20,17 @@ from .tools import (
     run_shell, run_skill, search_files, search_web, ToolResult, verify_file,
     view_file_paged, write_file,
 )
+from .tools import (
+    browser_navigate, browser_click, browser_type, browser_scroll,
+    browser_snapshot, browser_back, browser_screenshot, browser_extract, browser_close,
+    vision_analyze, delegate_task,
+    cron_add, cron_remove, cron_list, cron_enable, cron_run, cron_logs,
+    kanban_add, kanban_list, kanban_move, kanban_show, kanban_delete, kanban_update,
+    computer_screenshot, computer_click, computer_type, computer_keypress, computer_size,
+)
 from .templates import parse_action, get_model_template, get_action_format_instructions, record_successful_strategy
 from .plan_executor import PlanExecutor
 from .training.examples import get_few_shot_examples  # noqa: direct import to avoid circular via __init__
-
-_EXEC_SHORT: dict[str, str] = {
-    "python3": "py", "bash": "sh", "fish": "sh", "go": "go",
-    "gcc": "c", "node": "js", "ruby": "rb", "rust": "rs",
-}
 
 
 SYSTEM_PROMPT_EN = """You are Delux, an AI assistant for system administration, file management, automation, and software development.
@@ -38,6 +41,12 @@ Capabilities:
 - Execute and create reusable skills
 - RAG-powered semantic search over your entire codebase and docs
 - Remember facts across sessions
+- Browse the web interactively (navigate, click, type, scroll)
+- Analyze images with vision AI
+- Delegate complex tasks to subagents
+- Schedule recurring tasks (cron)
+- Manage tasks with a kanban board
+- Control the desktop (click, type, screenshot, keypress)
 
 Workspace:
 - Shell commands run in the current working directory provided to you
@@ -97,6 +106,9 @@ Rules:
 - CODE: Do not deliver code blocks in the "final" action. If you need to create a file, use "write_file". "final" is only for a brief summary.
 - PLAN DISCIPLINE: If you receive a "!!! PLAN IN PROGRESS !!!" banner, you CANNOT use "final" until all plan steps are SUCCESS.
 - MEMORY & LEARNING: BEFORE using "final", ALWAYS evaluate if you learned a new technical solution, code pattern, or user preference. If yes, save it using "remember" (for user facts) or "run_skill" with "delux-obsidian-brain" (for technical knowledge).
+- BROWSER (STATEFUL SESSION): Native browser actions (browser_navigate, browser_click, browser_type, browser_snapshot, browser_scroll, browser_back) keep the browser OPEN between steps. Use for multi-step workflows: login → navigate → extract. Start with browser_snapshot to see the page, then interact.
+- BROWSER (STATELESS): The skill `delux-browser` does ONE action and CLOSES the browser. Use run_skill for simple: "get text from this URL", "screenshot this page", "extract table data". Each call is independent.
+- DECISION GUIDE: Need to CLICK → WAIT → TYPE across pages? Use native browser actions. Just need TEXT or SCREENSHOT from one URL? Use run_skill delux-browser.
 
 After each action you receive a result:
 - If result starts with "SUCCESS:": the action succeeded. Do NOT repeat it. Either proceed to the NEXT step or, if all steps are done, respond with {"action":"final","message":"brief summary"}.
@@ -124,6 +136,34 @@ Allowed actions (return exactly one JSON object):
 {"action":"remember","note":"..."}
 {"action":"skip_step","step_id":1,"reason":"why not needed"}
 {"action":"final","message":"..."}
+{"action":"browser_navigate","url":"https://example.com","timeout":30}
+{"action":"browser_click","selector":"a.link"}
+{"action":"browser_type","selector":"input#search","text":"query"}
+{"action":"browser_scroll","direction":"down","amount":500}
+{"action":"browser_snapshot"}
+{"action":"browser_screenshot","full_page":false}
+{"action":"browser_extract"}
+{"action":"browser_back"}
+{"action":"browser_close"}
+{"action":"vision_analyze","image_path":"/path/to/image.png","prompt":"Describe this image"}
+{"action":"delegate_task","task":"task description","max_steps":12,"timeout":120}
+{"action":"cron_add","name":"backup","expression":"0 3 * * *","command":"rsync -a /data /backup"}
+{"action":"cron_remove","job_id":1}
+{"action":"cron_list"}
+{"action":"cron_enable","job_id":1,"enabled":true}
+{"action":"cron_run","job_id":1,"timeout":60}
+{"action":"cron_logs","job_id":1}
+{"action":"kanban_add","title":"Fix bug","description":"The login button crashes","tags":"bug","priority":1}
+{"action":"kanban_list","status":"todo"}
+{"action":"kanban_move","card_id":1,"status":"in_progress"}
+{"action":"kanban_show","card_id":1}
+{"action":"kanban_delete","card_id":1}
+{"action":"kanban_update","card_id":1,"title":"Updated title"}
+{"action":"computer_screenshot"}
+{"action":"computer_click","x":100,"y":200,"button":"left"}
+{"action":"computer_type","text":"hello world"}
+{"action":"computer_keypress","key":"Return"}
+{"action":"computer_size"}
 """
 
 SYSTEM_PROMPT_ES = """Eres Delux, un asistente IA para administración del sistema, gestión de archivos, automatización y desarrollo.
@@ -134,6 +174,12 @@ Capacidades:
 - Ejecutar y crear skills reutilizables
 - Búsqueda RAG sobre todo el codebase y documentos
 - Recordar hechos entre sesiones
+- Navegar la web interactivamente (navegar, hacer clic, escribir, desplazar)
+- Analizar imágenes con visión IA
+- Delegar tareas complejas a subagentes
+- Programar tareas recurrentes (cron)
+- Gestionar tareas con un tablero kanban
+- Controlar el escritorio (clic, escribir, captura de pantalla, teclas)
 
 Espacio de trabajo:
 - Los comandos de shell se ejecutan en el directorio de trabajo actual que se te proporciona
@@ -165,6 +211,9 @@ Reglas:
 - CÓDIGO: No entregues bloques de código en la acción "final". Si necesitas crear un archivo, usa "write_file". "final" es solo para un resumen breve.
 - DISCIPLINA DE PLAN: Si recibes un banner "!!! PLAN IN PROGRESS !!!", NO puedes usar "final" hasta que todos los pasos del plan estén en SUCCESS.
 - MEMORIA Y APRENDIZAJE: ANTES de usar "final", SIEMPRE evalúa si aprendiste una nueva solución técnica, patrón o preferencia. Si es así, guárdalo usando "remember" (para datos del usuario) o "run_skill" con "delux-obsidian-brain" (para conocimiento técnico).
+- NAVEGADOR (SESIÓN): Las acciones nativas (browser_navigate, browser_click, browser_type, browser_snapshot, browser_scroll, browser_back) mantienen el navegador ABIERTO entre pasos. Úsalas para flujos multi-paso: login → navegar → extraer.
+- NAVEGADOR (ESTÁTICO): El skill `delux-browser` hace UNA acción y CIERRA el navegador. Úsalo para "dame el texto de esta URL", "captura esta página", "extrae datos de tabla". Cada llamada es independiente.
+- GUÍA: ¿Necesitas HACER CLIC → ESPERAR → ESCRIBIR en varias páginas? Usa acciones nativas. ¿Solo texto o captura de una URL? Usa run_skill delux-browser.
 
 ACCESO A SKILLS:
 - Los skills aparecen como "nombre: resumen". Es solo referencia breve.
@@ -174,7 +223,7 @@ ACCESO A SKILLS:
 GESTIÓN DE SKILLS:
 - Todos los skills viven en DELUX_HOME/skills/. Esta es la ÚNICA ubicación canónica.
 - La sección SKILLS: arriba muestra todos los skills disponibles. Revísala antes de crear nuevos.
-- ANTES de usar create_skill: verifica si ya existe un skill similar en SKILLS.
+- ANTES de usar create_skill: verifica si ya existe un skill con el mismo nombre o similar.
 - create_skill será RECHAZADO si ya existe un skill con el mismo nombre o similar.
 
 Después de cada acción recibes un resultado:
@@ -203,6 +252,34 @@ Acciones permitidas (devuelve exactamente un objeto JSON):
 {"action":"remember","note":"..."}
 {"action":"skip_step","step_id":1,"reason":"por qué no es necesario"}
 {"action":"final","message":"..."}
+{"action":"browser_navigate","url":"https://ejemplo.com","timeout":30}
+{"action":"browser_click","selector":"a.link"}
+{"action":"browser_type","selector":"input#buscar","text":"consulta"}
+{"action":"browser_scroll","direction":"down","amount":500}
+{"action":"browser_snapshot"}
+{"action":"browser_screenshot","full_page":false}
+{"action":"browser_extract"}
+{"action":"browser_back"}
+{"action":"browser_close"}
+{"action":"vision_analyze","image_path":"/ruta/a/imagen.png","prompt":"Describe esta imagen"}
+{"action":"delegate_task","task":"descripción de la tarea","max_steps":12,"timeout":120}
+{"action":"cron_add","name":"backup","expression":"0 3 * * *","command":"rsync -a /datos /backup"}
+{"action":"cron_remove","job_id":1}
+{"action":"cron_list"}
+{"action":"cron_enable","job_id":1,"enabled":true}
+{"action":"cron_run","job_id":1,"timeout":60}
+{"action":"cron_logs","job_id":1}
+{"action":"kanban_add","title":"Arreglar bug","description":"El boton de login falla","tags":"bug","priority":1}
+{"action":"kanban_list","status":"todo"}
+{"action":"kanban_move","card_id":1,"status":"in_progress"}
+{"action":"kanban_show","card_id":1}
+{"action":"kanban_delete","card_id":1}
+{"action":"kanban_update","card_id":1,"title":"Título actualizado"}
+{"action":"computer_screenshot"}
+{"action":"computer_click","x":100,"y":200,"button":"left"}
+{"action":"computer_type","text":"hola mundo"}
+{"action":"computer_keypress","key":"Return"}
+{"action":"computer_size"}
 """
 
 ERROR_REFLECTION_EN = """ERROR in the previous action: {error}
@@ -583,14 +660,14 @@ class Agent:
                 optimized_prompt += "\n\nNote: The user's original language was Spanish. Please respond in that language."
             self._emit("contextualizer_finished", savings=ctx_result.savings_pct, changes=ctx_result.changes)
 
-        # ── Merge static context into system prompt (single prefix for KV cache) ──
+        # ── System prompt (instructions + action format + few-shot) ──
         system_content = full_system
         if dataset_few_shot:
             system_content += dataset_few_shot
-        system_content += "\n\n" + base_context
 
-        messages: list[dict] = [
+        messages = [
             {"role": "system", "content": system_content},
+            {"role": "user", "content": base_context},
         ]
         if exp_context:
             messages.append({"role": "user", "content": exp_context})
@@ -816,13 +893,9 @@ class Agent:
         if s.builtin:
             parts.append(" [built-in]")
         if s.has_exec:
-            short = _EXEC_SHORT.get(s.exec_lang, s.exec_lang)
-            parts.append(f" [{short}]")
-        summary = (s.summary or "")[:65].strip()
-        if len(s.summary or "") > 65:
-            summary += "…"
-        parts.append(f": {summary}")
-        parts.append(f" → skills/{s.name}/SKILL.md")
+            parts.append(f" [exec:{s.exec_lang}]")
+        parts.append(f": {s.summary}")
+        parts.append(f" → view_file skills/{s.name}/SKILL.md")
         return "".join(parts)
 
     def _build_context_without_plan(self) -> str:
@@ -859,14 +932,10 @@ class Agent:
         skills = load_skills(self.config.builtin_skills_dir, self.config.skills_dir)
         parts: list[str] = []
         for s in skills:
-            tag = ""
-            if s.builtin:
-                tag += " [built-in]"
-            if s.has_exec:
-                short = _EXEC_SHORT.get(s.exec_lang, s.exec_lang)
-                tag += f" [{short}]"
-            summary = s.summary[:50] + "…" if len(s.summary) > 50 else s.summary
-            parts.append(f"--- skill:{s.name}{tag}: {summary}")
+            badge = f" [exec:{s.exec_lang}]" if s.has_exec else ""
+            builtin_tag = " [built-in]" if s.builtin else ""
+            summary = f": {s.summary}" if s.summary else ""
+            parts.append(f"--- skill:{s.name}{builtin_tag}{badge}{summary}")
         return "\n".join(parts) or "No skills available."
 
     def _warmup_cache(self, full_system: str, base_context: str) -> None:
@@ -1139,6 +1208,96 @@ Respond ONLY with your diagnosis and the next action to try, in JSON format:
                 root,
                 int(action.get("timeout", 30)),
             )
+        elif kind == "browser_navigate":
+            result = browser_navigate(
+                str(action.get("url", "")),
+                int(action.get("timeout", 30)),
+            )
+        elif kind == "browser_click":
+            result = browser_click(str(action.get("selector", "")))
+        elif kind == "browser_type":
+            result = browser_type(str(action.get("selector", "")), str(action.get("text", "")))
+        elif kind == "browser_scroll":
+            result = browser_scroll(
+                str(action.get("direction", "down")),
+                int(action.get("amount", 500)),
+            )
+        elif kind == "browser_snapshot":
+            result = browser_snapshot()
+        elif kind == "browser_screenshot":
+            result = browser_screenshot(full_page=bool(action.get("full_page", False)))
+        elif kind == "browser_extract":
+            result = browser_extract()
+        elif kind == "browser_back":
+            result = browser_back()
+        elif kind == "browser_close":
+            result = browser_close()
+        elif kind == "vision_analyze":
+            result = vision_analyze(
+                str(action.get("image_path", "")),
+                str(action.get("prompt", "Describe this image")),
+                self.config.api_base,
+                self.config.api_key,
+                self.config.model,
+                self.config.api_endpoint,
+            )
+        elif kind == "delegate_task":
+            result = delegate_task(
+                str(action.get("task", "")),
+                root, cwd,
+                int(action.get("max_steps", 12)),
+                int(action.get("timeout", 120)),
+            )
+        elif kind == "cron_add":
+            result = cron_add(
+                str(action.get("name", "")),
+                str(action.get("expression", "")),
+                str(action.get("command", "")),
+                root,
+            )
+        elif kind == "cron_remove":
+            result = cron_remove(int(action.get("job_id", 0)), root)
+        elif kind == "cron_list":
+            result = cron_list(root)
+        elif kind == "cron_enable":
+            result = cron_enable(int(action.get("job_id", 0)), bool(action.get("enabled", True)), root)
+        elif kind == "cron_run":
+            result = cron_run(int(action.get("job_id", 0)), root, int(action.get("timeout", 60)))
+        elif kind == "cron_logs":
+            result = cron_logs(int(action.get("job_id", 0)), root)
+        elif kind == "kanban_add":
+            result = kanban_add(
+                str(action.get("title", "")),
+                str(action.get("description", "")),
+                root,
+                str(action.get("tags", "")),
+                int(action.get("priority", 0)),
+            )
+        elif kind == "kanban_list":
+            result = kanban_list(root, str(action.get("status")) if action.get("status") else None)
+        elif kind == "kanban_move":
+            result = kanban_move(int(action.get("card_id", 0)), str(action.get("status", "")), root)
+        elif kind == "kanban_show":
+            result = kanban_show(int(action.get("card_id", 0)), root)
+        elif kind == "kanban_delete":
+            result = kanban_delete(int(action.get("card_id", 0)), root)
+        elif kind == "kanban_update":
+            kanban_kwargs = {k: v for k, v in action.items() if k in ("title", "description", "status", "assignee", "tags", "priority")}
+            result = kanban_update(int(action.get("card_id", 0)), root, **kanban_kwargs)
+        elif kind == "computer_screenshot":
+            result = computer_screenshot(root)
+        elif kind == "computer_click":
+            result = computer_click(
+                int(action.get("x", 0)),
+                int(action.get("y", 0)),
+                str(action.get("button", "left")),
+            )
+        elif kind == "computer_type":
+            result = computer_type(str(action.get("text", "")))
+        elif kind == "computer_keypress":
+            result = computer_keypress(str(action.get("key", "")))
+        elif kind == "computer_size":
+            result = computer_size()
         elif kind == "final":
             return "Final answer emitted."
         else:

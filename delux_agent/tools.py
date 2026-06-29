@@ -1111,3 +1111,222 @@ def discover_mcp_tools(server_name: str, root: Path) -> ToolResult:
         return ToolResult(True, "\n".join(lines))
     except Exception as exc:
         return ToolResult(False, f"Failed to discover MCP tools: {exc}")
+
+
+# ── Browser tools ──────────────────────────────────────────────────────
+
+def browser_navigate(url: str, timeout: int = 30) -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().navigate(url, timeout=timeout)
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_click(selector: str) -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().click(selector)
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_type(selector: str, text: str) -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().type(selector, text)
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_scroll(direction: str = "down", amount: int = 500) -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().scroll(direction, amount)
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_snapshot() -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().snapshot()
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_back() -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().back()
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_screenshot(full_page: bool = False) -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().screenshot(full_page=full_page)
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_extract() -> ToolResult:
+    from .browser import get_browser
+    try:
+        result = get_browser().extract_text()
+        return ToolResult(result.ok, result.output)
+    except RuntimeError as e:
+        return ToolResult(False, str(e))
+
+
+def browser_close() -> ToolResult:
+    from .browser import close_browser
+    close_browser()
+    return ToolResult(True, "Browser closed")
+
+
+# ── Vision tools ───────────────────────────────────────────────────────
+
+def vision_analyze(image_path: str, prompt: str, api_base: str = "", api_key: str | None = None, model: str = "", api_endpoint: str | None = None) -> ToolResult:
+    from .vision import analyze_image
+    result = analyze_image(image_path, prompt, api_base, api_key, model, api_endpoint)
+    return ToolResult(result.ok, result.output)
+
+
+# ── Subagent tools ─────────────────────────────────────────────────────
+
+def delegate_task(task: str, root: Path, cwd: Path, max_steps: int = 12, timeout: int = 120) -> ToolResult:
+    from .subagent import spawn_subagent
+    result = spawn_subagent(
+        task=task,
+        config_root=str(root),
+        cwd=str(cwd),
+        max_steps=max_steps,
+        timeout=timeout,
+    )
+    return ToolResult(result.ok, result.output)
+
+
+# ── Cron tools ─────────────────────────────────────────────────────────
+
+def cron_add(name: str, expression: str, command: str, root: Path) -> ToolResult:
+    from .cron import get_scheduler
+    result = get_scheduler(root).add(name, expression, command)
+    return ToolResult(result.ok, result.output)
+
+
+def cron_remove(job_id: int, root: Path) -> ToolResult:
+    from .cron import get_scheduler
+    result = get_scheduler(root).remove(job_id)
+    return ToolResult(result.ok, result.output)
+
+
+def cron_list(root: Path) -> ToolResult:
+    from .cron import get_scheduler
+    jobs = get_scheduler(root).list_jobs()
+    if not jobs:
+        return ToolResult(True, "No cron jobs configured.")
+    lines = []
+    for j in jobs:
+        status = "ON" if j.enabled else "OFF"
+        lines.append(f"  [{j.id}] {status} {j.name}: {j.expression} -> {j.command}")
+        if j.last_run:
+            lines.append(f"       last: {j.last_run}")
+    return ToolResult(True, "\n".join(lines))
+
+
+def cron_enable(job_id: int, enabled: bool, root: Path) -> ToolResult:
+    from .cron import get_scheduler
+    result = get_scheduler(root).enable(job_id, enabled)
+    return ToolResult(result.ok, result.output)
+
+
+def cron_run(job_id: int, root: Path, timeout: int = 60) -> ToolResult:
+    from .cron import get_scheduler
+    result = get_scheduler(root).run_now(job_id, timeout=timeout)
+    return ToolResult(result.ok, f"Job {job_id} executed:\n{result.output}")
+
+
+def cron_logs(job_id: int, root: Path) -> ToolResult:
+    from .cron import get_scheduler
+    output = get_scheduler(root).logs(job_id)
+    return ToolResult(True, output)
+
+
+# ── Kanban tools ───────────────────────────────────────────────────────
+
+def kanban_add(title: str, description: str, root: Path, tags: str = "", priority: int = 0) -> ToolResult:
+    from .kanban import get_board
+    result = get_board(root).add(title, description, tags, priority)
+    return ToolResult(result.ok, result.output)
+
+
+def kanban_list(root: Path, status: str | None = None) -> ToolResult:
+    from .kanban import get_board
+    output = get_board(root).list(status)
+    return ToolResult(True, output)
+
+
+def kanban_move(card_id: int, status: str, root: Path) -> ToolResult:
+    from .kanban import get_board
+    result = get_board(root).move(card_id, status)
+    return ToolResult(result.ok, result.output)
+
+
+def kanban_show(card_id: int, root: Path) -> ToolResult:
+    from .kanban import get_board
+    output = get_board(root).show(card_id)
+    return ToolResult(True, output)
+
+
+def kanban_delete(card_id: int, root: Path) -> ToolResult:
+    from .kanban import get_board
+    result = get_board(root).delete(card_id)
+    return ToolResult(result.ok, result.output)
+
+
+def kanban_update(card_id: int, root: Path, **kwargs) -> ToolResult:
+    from .kanban import get_board
+    result = get_board(root).update(card_id, **kwargs)
+    return ToolResult(result.ok, result.output)
+
+
+# ── Computer Use tools ─────────────────────────────────────────────────
+
+def computer_screenshot(root: Path) -> ToolResult:
+    from .computer_use import screenshot
+    output_dir = str(root / "screenshots")
+    result = screenshot(output_dir=output_dir)
+    return ToolResult(result.ok, result.output)
+
+
+def computer_click(x: int, y: int, button: str = "left") -> ToolResult:
+    from .computer_use import click
+    result = click(x, y, button)
+    return ToolResult(result.ok, result.output)
+
+
+def computer_type(text: str) -> ToolResult:
+    from .computer_use import type_text
+    result = type_text(text)
+    return ToolResult(result.ok, result.output)
+
+
+def computer_keypress(key: str) -> ToolResult:
+    from .computer_use import keypress
+    result = keypress(key)
+    return ToolResult(result.ok, result.output)
+
+
+def computer_size() -> ToolResult:
+    from .computer_use import get_screen_size
+    result = get_screen_size()
+    return ToolResult(result.ok, result.output)

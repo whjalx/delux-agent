@@ -19,12 +19,12 @@ delux-quick-search <query>
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-quick-search","args":"nginx configuration for reverse proxy","timeout":30}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 ### Web Search Results for: 'nginx configuration for reverse proxy'
 
@@ -33,7 +33,7 @@ delux-quick-search <query>
    Snippet: A step-by-step guide to setting up NGINX as a reverse proxy server...
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-quick-search example ---
 USER: "how do I install docker on fedora?"

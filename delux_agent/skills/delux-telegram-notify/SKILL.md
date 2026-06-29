@@ -19,17 +19,17 @@ delux-telegram-notify "<message>"
 
 ## Response Examples
 
-### Agent invoca la skill
+### Agent invokes the skill
 ```json
 {"action":"run_skill","skill":"delux-telegram-notify","args":"Backup completed successfully. 2.3GB processed.","timeout":15}
 ```
 
-### Skill devuelve resultado
+### Skill returns result
 ```
 SUCCESS: Notification sent to Telegram.
 ```
 
-### Prompt injection example (para few-shot learning)
+### Prompt injection example
 ```
 --- delux-telegram-notify example ---
 USER: "let me know when the deployment finishes"

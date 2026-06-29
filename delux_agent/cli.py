@@ -49,6 +49,21 @@ _ACTION_ICONS = {
     "save_experience": "save", "load_experience": "load",
     "remember": "remember", "move_file": "move",
     "final": "done",
+    "browser_navigate": "globe", "browser_click": "click",
+    "browser_type": "type", "browser_scroll": "scroll",
+    "browser_snapshot": "view", "browser_screenshot": "camera",
+    "browser_extract": "extract", "browser_back": "back",
+    "browser_close": "close",
+    "vision_analyze": "eye",
+    "delegate_task": "delegate",
+    "cron_add": "cron+", "cron_remove": "cron-", "cron_list": "cron",
+    "cron_enable": "cron", "cron_run": "cron>", "cron_logs": "cron",
+    "kanban_add": "kanban+", "kanban_list": "kanban",
+    "kanban_move": "kanban>", "kanban_show": "kanban",
+    "kanban_delete": "kanban-", "kanban_update": "kanban~",
+    "computer_screenshot": "screen", "computer_click": "cursor",
+    "computer_type": "kb", "computer_keypress": "kb",
+    "computer_size": "screen",
 }
 
 _ACTION_COLORS = {
@@ -63,6 +78,21 @@ _ACTION_COLORS = {
     "save_experience": DIM, "load_experience": DIM,
     "remember": DIM, "move_file": CYAN,
     "final": GREEN,
+    "browser_navigate": BLUE, "browser_click": BLUE,
+    "browser_type": BLUE, "browser_scroll": BLUE,
+    "browser_snapshot": CYAN, "browser_screenshot": CYAN,
+    "browser_extract": CYAN, "browser_back": BLUE,
+    "browser_close": DIM,
+    "vision_analyze": MAGENTA,
+    "delegate_task": YELLOW,
+    "cron_add": MAGENTA, "cron_remove": MAGENTA, "cron_list": MAGENTA,
+    "cron_enable": MAGENTA, "cron_run": MAGENTA, "cron_logs": MAGENTA,
+    "kanban_add": YELLOW, "kanban_list": YELLOW,
+    "kanban_move": YELLOW, "kanban_show": YELLOW,
+    "kanban_delete": YELLOW, "kanban_update": YELLOW,
+    "computer_screenshot": CYAN, "computer_click": CYAN,
+    "computer_type": CYAN, "computer_keypress": CYAN,
+    "computer_size": CYAN,
 }
 
 
@@ -195,6 +225,62 @@ def main(argv: list[str] | None = None) -> int:
             poll_interval=gw_args.poll_interval,
             single_run=gw_args.once,
         )
+    if argv and argv[0] == "cron":
+        from .cron import get_scheduler
+        cron_parser = argparse.ArgumentParser(prog="delux cron", description="Manage cron jobs.")
+        cron_parser.add_argument("action", choices=["add", "remove", "list", "run", "logs"], help="Action")
+        cron_parser.add_argument("--name", default="", help="Job name")
+        cron_parser.add_argument("--expression", default="", help="Cron expression")
+        cron_parser.add_argument("--command", default="", help="Shell command")
+        cron_parser.add_argument("--job-id", type=int, default=0, help="Job ID")
+        cron_parser.add_argument("--home", default=None, help="DELUX_HOME workspace.")
+        cron_args = cron_parser.parse_args(argv[1:])
+        root = Path(cron_args.home).expanduser().resolve() if cron_args.home else default_root()
+        sched = get_scheduler(root)
+        if cron_args.action == "add":
+            result = sched.add(cron_args.name, cron_args.expression, cron_args.command)
+            print(result.output)
+        elif cron_args.action == "remove":
+            result = sched.remove(cron_args.job_id)
+            print(result.output)
+        elif cron_args.action == "list":
+            for j in sched.list_jobs():
+                status = "ON" if j.enabled else "OFF"
+                print(f"  [{j.id}] {status} {j.name}: {j.expression} -> {j.command}")
+                if j.last_run:
+                    print(f"       last: {j.last_run}")
+        elif cron_args.action == "run":
+            result = sched.run_now(cron_args.job_id)
+            print(result.output)
+        elif cron_args.action == "logs":
+            print(sched.logs(cron_args.job_id))
+        return 0
+    if argv and argv[0] == "kanban":
+        from .kanban import get_board
+        kb_parser = argparse.ArgumentParser(prog="delux kanban", description="Manage kanban board.")
+        kb_parser.add_argument("action", choices=["add", "list", "move", "show", "delete"], help="Action")
+        kb_parser.add_argument("--title", default="", help="Card title")
+        kb_parser.add_argument("--description", default="", help="Card description")
+        kb_parser.add_argument("--status", default="todo", help="Card status")
+        kb_parser.add_argument("--card-id", type=int, default=0, help="Card ID")
+        kb_parser.add_argument("--home", default=None, help="DELUX_HOME workspace.")
+        kb_args = kb_parser.parse_args(argv[1:])
+        root = Path(kb_args.home).expanduser().resolve() if kb_args.home else default_root()
+        board = get_board(root)
+        if kb_args.action == "add":
+            result = board.add(kb_args.title, kb_args.description)
+            print(result.output)
+        elif kb_args.action == "list":
+            print(board.list(kb_args.status))
+        elif kb_args.action == "move":
+            result = board.move(kb_args.card_id, kb_args.status)
+            print(result.output)
+        elif kb_args.action == "show":
+            print(board.show(kb_args.card_id))
+        elif kb_args.action == "delete":
+            result = board.delete(kb_args.card_id)
+            print(result.output)
+        return 0
 
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -316,6 +402,48 @@ def _cli_event_handler(event: str, payload: dict) -> None:
             print(_hl(label, color, f"{s}  {a}"))
         elif kind == "move_file":
             print(_hl(label, color, f"{action.get('src', '')} → {action.get('dst', '')}"))
+        elif kind.startswith("browser_"):
+            detail = ""
+            if kind == "browser_navigate":
+                detail = str(action.get("url", ""))[:200]
+            elif kind == "browser_click":
+                detail = str(action.get("selector", ""))[:100]
+            elif kind == "browser_type":
+                detail = f"{action.get('selector', '')} = '{action.get('text', '')[:50]}'"
+            elif kind == "browser_scroll":
+                detail = f"{action.get('direction', 'down')} {action.get('amount', 500)}"
+            print(_hl(label, color, detail))
+        elif kind.startswith("vision_"):
+            print(_hl(label, color, str(action.get("image_path", ""))[:200]))
+        elif kind == "delegate_task":
+            print(_hl(label, color, str(action.get("task", ""))[:200]))
+        elif kind.startswith("cron_"):
+            detail = ""
+            if kind == "cron_add":
+                detail = f"{action.get('name', '')} {action.get('expression', '')}"
+            elif kind in ("cron_remove", "cron_enable", "cron_run", "cron_logs"):
+                detail = f"job #{action.get('job_id', '')}"
+            elif kind == "cron_list":
+                detail = ""
+            print(_hl(label, color, detail))
+        elif kind.startswith("kanban_"):
+            detail = ""
+            if kind == "kanban_add":
+                detail = str(action.get("title", ""))[:100]
+            elif kind in ("kanban_move", "kanban_show", "kanban_delete", "kanban_update"):
+                detail = f"card #{action.get('card_id', '')}"
+            elif kind == "kanban_list":
+                detail = str(action.get("status", "") or "all")
+            print(_hl(label, color, detail))
+        elif kind.startswith("computer_"):
+            detail = ""
+            if kind == "computer_click":
+                detail = f"({action.get('x', 0)}, {action.get('y', 0)}) {action.get('button', 'left')}"
+            elif kind == "computer_type":
+                detail = str(action.get("text", ""))[:100]
+            elif kind == "computer_keypress":
+                detail = str(action.get("key", ""))
+            print(_hl(label, color, detail))
         elif kind == "final":
             print(f"\n  ·  {GREEN}{BOLD}{action.get('message', '')}{RESET}")
         elif kind in ("remember", "save_experience", "load_experience"):

@@ -101,7 +101,7 @@ def chat_completion(
         payload["max_tokens"] = max_tokens
     if stream:
         payload["stream"] = True
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
     
     # --- GOOGLE GEMINI NATIVE SUPPORT ---
     if api_base == "google" or "generativelanguage.googleapis.com" in (api_endpoint or api_base):
@@ -184,7 +184,7 @@ def get_embedding(
     api_endpoint: str | None = None,
     timeout: int = 30,
 ) -> list[float]:
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"}
     
     # --- GOOGLE GEMINI NATIVE SUPPORT ---
     if api_base == "google" or "generativelanguage.googleapis.com" in (api_endpoint or api_base):

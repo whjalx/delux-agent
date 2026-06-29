@@ -9,6 +9,11 @@ Delux Codex — expert source code analysis, generation, and refactoring with de
 - Code review with security and performance analysis
 - Explaining complex code patterns plainly
 
+## Usage
+delux-codex <file_or_directory>
+
+Analyzes the given file or project directory for structure, patterns, and best practices.
+
 ## Steps
 1. **Read**: Understand the codebase structure and entry points
 2. **Map**: Build a mental model of dependencies and data flow
@@ -30,16 +35,33 @@ Delux Codex — expert source code analysis, generation, and refactoring with de
 {"action":"run_skill","skill":"delux-codex","args":"src/main.py","timeout":30}
 ```
 
-### Skill returns analysis
+### Skill returns analysis (file)
 ```json
 {
   "delux_codex": {
     "mode": "analyze",
     "target": "src/main.py",
-    "language": "python",
+    "type": "file",
+    "language": "Python",
+    "size_bytes": 5231,
     "depth": "structural",
-    "status": "ready",
-    "confidence": 0.95
+    "status": "ready"
+  }
+}
+```
+
+### Skill returns analysis (directory)
+```json
+{
+  "delux_codex": {
+    "mode": "analyze",
+    "target": "src/",
+    "type": "directory",
+    "total_files": 42,
+    "total_size_bytes": 128450,
+    "language_distribution": {"Python": 18, "JavaScript": 12, "HTML": 5},
+    "depth": "structural",
+    "status": "ready"
   }
 }
 ```
@@ -49,7 +71,7 @@ Delux Codex — expert source code analysis, generation, and refactoring with de
 --- delux-codex example ---
 USER: "review the code in src/main.py"
 AGENT: {"action":"run_skill","skill":"delux-codex","args":"src/main.py","timeout":30}
-RESULT: {"delux_codex": {"mode": "analyze", "target": "src/main.py", "status": "ready", "confidence": 0.95}}
+RESULT: {"delux_codex": {"mode": "analyze", "target": "src/main.py", "type": "file", "language": "Python", "status": "ready"}}
 NEXT ACTION: {"action":"read_file","path":"src/main.py"}
 ```
 
