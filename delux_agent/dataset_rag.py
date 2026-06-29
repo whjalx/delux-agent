@@ -8,6 +8,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Optional
 
+from .templates import action_to_xml
+
 
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"[A-Za-z0-9_]+", text.lower())
@@ -110,7 +112,7 @@ def _hermes_to_delux(tc: dict) -> str:
     action = {"action": action_name}
     action.update(converted)
     try:
-        return json.dumps(action, ensure_ascii=False)
+        return action_to_xml(action)
     except Exception:
         return ""
 

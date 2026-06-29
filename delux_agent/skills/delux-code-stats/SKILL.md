@@ -20,8 +20,11 @@ Run in any project directory: `delux-code-stats`
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-code-stats","args":"","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-code-stats</skill>
+<args></args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -40,9 +43,15 @@ Language Distribution:
 ```
 --- delux-code-stats example ---
 USER: "how big is this project?"
-AGENT: {"action":"run_skill","skill":"delux-code-stats","args":"","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-code-stats</skill>
+<args></args>
+<timeout>30</timeout>
 RESULT: Total Files: 42, Total Lines: 5231
-NEXT ACTION: {"action":"final","message":"Project has 42 files with 5231 lines of code across 8 languages"}
+NEXT ACTION:
+<action>final</action>
+<message>Project has 42 files with 5231 lines of code across 8 languages</message>
 ```
 
 ## Caveats

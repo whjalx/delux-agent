@@ -38,12 +38,15 @@ delux-gateway start | delux-gateway status | delux-gateway stop
 ## Response Examples
 
 ### Agent starts gateway
-```json
-{"action":"run_skill","skill":"delux-gateway","args":"start","timeout":10}
+```
+<action>run_skill</action>
+<skill>delux-gateway</skill>
+<args>start</args>
+<timeout>10</timeout>
 ```
 
 ### Gateway status
-```json
+```
 {
   "status": "running",
   "chat_id": "123456789",
@@ -57,9 +60,15 @@ delux-gateway start | delux-gateway status | delux-gateway stop
 ```
 --- delux-gateway example ---
 USER: "start the telegram gateway"
-AGENT: {"action":"run_skill","skill":"delux-gateway","args":"start","timeout":10}
+AGENT:
+<action>run_skill</action>
+<skill>delux-gateway</skill>
+<args>start</args>
+<timeout>10</timeout>
 RESULT: {"status":"running","chat_id":"123456789","mode":"long-polling"}
-NEXT ACTION: {"action":"final","message":"Gateway started. Send /start from Telegram to begin."}
+NEXT ACTION:
+<action>final</action>
+<message>Gateway started. Send /start from Telegram to begin.</message>
 ```
 
 ## Caveats

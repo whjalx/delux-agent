@@ -464,13 +464,13 @@ def _generate_training_dataset(root: Path, size: int) -> None:
 def _build_base_library(target_path: Path) -> None:
     import random
     scenarios = [
-        {'q': 'Scan subnet {subnet} for open SSH ports.', 'a': '{"action": "shell", "command": "nmap -p 22 {subnet}"}'},
-        {'q': 'Fix permissions in {dir} for .env files.', 'a': '{"action": "shell", "command": "find {dir} -name \".env\" -exec chmod 600 {} \\;"}'},
-        {'q': 'Check Docker containers with status "exited".', 'a': '{"action": "shell", "command": "docker ps -a -f status=exited"}'},
-        {'q': 'Search for {error} in system logs today.', 'a': '{"action": "shell", "command": "journalctl --since today | grep -i {error}"}'},
-        {'q': 'Create backup of {dir} excluding node_modules.', 'a': '{"action": "shell", "command": "tar --exclude=\"node_modules\" -czf backup.tar.gz {dir}"}'},
-        {'q': 'Send Telegram alert: Service {service} is down.', 'a': '{"action": "run_skill", "skill": "telegram-notify", "args": "CRITICAL: {service} is DOWN"}'},
-        {'q': 'Analyze {file} for undocumented functions.', 'a': '{"action": "run_skill", "skill": "writer-pro", "args": "--path {file} --analyze docs"}'}
+        {'q': 'Scan subnet {subnet} for open SSH ports.', 'a': '<action>shell</action>\n<command>nmap -p 22 {subnet}</command>\n<timeout>60</timeout>'},
+        {'q': 'Fix permissions in {dir} for .env files.', 'a': '<action>shell</action>\n<command>find {dir} -name ".env" -exec chmod 600 {} \;</command>\n<timeout>30</timeout>'},
+        {'q': 'Check Docker containers with status "exited".', 'a': '<action>shell</action>\n<command>docker ps -a -f status=exited</command>\n<timeout>30</timeout>'},
+        {'q': 'Search for {error} in system logs today.', 'a': '<action>shell</action>\n<command>journalctl --since today | grep -i {error}</command>\n<timeout>30</timeout>'},
+        {'q': 'Create backup of {dir} excluding node_modules.', 'a': '<action>shell</action>\n<command>tar --exclude="node_modules" -czf backup.tar.gz {dir}</command>\n<timeout>120</timeout>'},
+        {'q': 'Send Telegram alert: Service {service} is down.', 'a': '<action>run_skill</action>\n<skill>telegram-notify</skill>\n<args>CRITICAL: {service} is DOWN</args>\n<timeout>30</timeout>'},
+        {'q': 'Analyze {file} for undocumented functions.', 'a': '<action>run_skill</action>\n<skill>writer-pro</skill>\n<args>--path {file} --analyze docs</args>\n<timeout>60</timeout>'},
     ]
     
     subnets = ['192.168.1.0/24', '10.0.0.0/8', '172.16.0.0/12']

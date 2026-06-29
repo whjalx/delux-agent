@@ -20,6 +20,8 @@ INSTALL_DIR=""
 INSTALL_MODE="venv"
 RUN_SETUP="auto"
 SKIP_SHELL="no"
+INSTALL_BROWSER="no"
+IS_TERMUX="no"
 
 # ── Logging ─────────────────────────────────────────────────────────────
 info()    { echo -e "  ${CYAN}ℹ${RESET}  $*"; }
@@ -97,6 +99,111 @@ install_optional_deps() {
     success "Optional tools installed"
 }
 
+# ── Playwright / Browser Installation ─────────────────────────────────────
+install_playwright_browsers() {
+    local venv_dir="$1"
+    local venv_python="$venv_dir/bin/python"
+
+    if [ ! -x "$venv_python" ]; then
+        warn "No Python in venv, skipping browser install"
+        return 1
+    fi
+
+    info "Installing Playwright Python package..."
+    "$venv_python" -m pip install 'playwright>=1.40' --quiet 2>/dev/null || \
+    "$venv_python" -m pip install 'playwright>=1.40'
+
+    if ! "$venv_python" -c "import playwright" 2>/dev/null; then
+        warn "Playwright pip install failed"
+        return 1
+    fi
+    success "Playwright installed"
+
+    local browser="chromium"
+
+    if [ "$IS_TERMUX" = "yes" ]; then
+        info "Installing system Chromium for Termux/Android..."
+        pkg update -y 2>/dev/null || true
+        pkg install -y x11-repo tur-repo 2>/dev/null || true
+        if pkg install -y chromium 2>/dev/null; then
+            success "Termux Chromium installed"
+            # Verify it can be found
+            local chrome_path="${PREFIX}/bin/chromium"
+            if [ -x "$chrome_path" ]; then
+                info "Chromium binary at $chrome_path"
+                # Set env var so Playwright finds it
+                export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$chrome_path"
+            fi
+        else
+            warn "Termux Chromium not available, falling back to Firefox..."
+            browser="firefox"
+        fi
+    fi
+
+    info "Installing $browser browser via Playwright..."
+    case "$PLATFORM" in
+        android)
+            if [ "$browser" = "chromium" ] && [ -n "${PLAYWRIGHT_CHROMIUM_EXECUTABLE:-}" ]; then
+                info "Using system Chromium on Termux (no Playwright download needed)"
+            else
+                "$venv_python" -m playwright install firefox 2>/dev/null || \
+                warn "Firefox install failed; browser may not work"
+            fi
+            ;;
+        linux|wsl)
+            case "$ARCH_LABEL" in
+                ARM64|ARMv7|aarch64)
+                    "$venv_python" -m playwright install chromium 2>/dev/null || \
+                    "$venv_python" -m playwright install firefox 2>/dev/null || \
+                    warn "No Playwright browser could be installed for ARM Linux"
+                    ;;
+                *)
+                    "$venv_python" -m playwright install chromium 2>/dev/null || \
+                    warn "Chromium install failed; run: python -m playwright install chromium"
+                    ;;
+            esac
+            ;;
+        macos)
+            "$venv_python" -m playwright install chromium 2>/dev/null || \
+            "$venv_python" -m playwright install firefox 2>/dev/null || \
+            warn "Playwright browser install failed"
+            ;;
+        *)
+            warn "Unknown platform, trying chromium..."
+            "$venv_python" -m playwright install chromium 2>/dev/null || true
+            ;;
+    esac
+
+    # Quick verification
+    if "$venv_python" -c "
+import os, sys
+try:
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        kwargs = {'headless': True, 'args': ['--no-sandbox', '--disable-dev-shm-usage']}
+        if os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE'):
+            kwargs['executable_path'] = os.environ['PLAYWRIGHT_CHROMIUM_EXECUTABLE']
+        b = p.chromium.launch(**kwargs)
+        b.close()
+    print('OK')
+except Exception as e:
+    print(f'FAIL: {e}')
+" 2>/dev/null | grep -q OK; then
+        success "$browser browser works on this platform!"
+    else
+        warn "Browser verification failed. Trying Firefox fallback..."
+        if "$venv_python" -m playwright install firefox 2>/dev/null; then
+            "$venv_python" -c "
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    b = p.firefox.launch(headless=True, args=['--no-sandbox'])
+    b.close()
+print('OK')
+" 2>/dev/null | grep -q OK && success "Firefox browser works!" || warn "No working browser found"
+        fi
+    fi
+}
+
 _yes_no() {
     local prompt="$1"
     local default="${2:-Y}"
@@ -114,6 +221,21 @@ _yes_no() {
 detect_platform() {
     OS="$(uname -s)"
     ARCH="$(uname -m)"
+
+    # Termux / Android detection
+    if [ -n "${PREFIX:-}" ] && [ -d "${PREFIX:-}" ]; then
+        IS_TERMUX="yes"
+        PLATFORM="android"
+        info "Detected: Android/Termux ($ARCH_LABEL)"
+        return
+    fi
+    if [ "$(uname -o 2>/dev/null)" = "Android" ] 2>/dev/null; then
+        IS_TERMUX="yes"
+        PLATFORM="android"
+        info "Detected: Android ($ARCH_LABEL)"
+        return
+    fi
+
     case "$OS" in
         Linux*)
             if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null; then
@@ -444,6 +566,7 @@ Options:
   --system          Install system-wide (requires sudo)
   --no-shell        Skip shell integration
   --no-setup        Skip interactive setup wizard
+  --browser         Install Playwright + browser (Chromium/Firefox) for web automation
   --help            Show this help
 
 Examples:
@@ -467,10 +590,11 @@ parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --dir)      INSTALL_DIR="$2"; shift 2 ;;
-            --system)   INSTALL_MODE="system"; shift ;;
-            --no-shell) SKIP_SHELL="yes"; shift ;;
-            --no-setup) RUN_SETUP="no"; shift ;;
-            --help|-h)  usage ;;
+        --system)   INSTALL_MODE="system"; shift ;;
+        --no-shell) SKIP_SHELL="yes"; shift ;;
+        --no-setup) RUN_SETUP="no"; shift ;;
+        --browser)  INSTALL_BROWSER="yes"; shift ;;
+        --help|-h)  usage ;;
             *)          error "Unknown option: $1"; usage ;;
         esac
     done
@@ -505,10 +629,18 @@ main() {
     fi
 
     # ── System dependencies ──
-    if [ "${SKIP_DEPS:-no}" != "yes" ] && [ -n "$PKG_MGR" ]; then
+    if [ "${SKIP_DEPS:-no}" != "yes" ] && [ -n "$PKG_MGR" ] && [ "$IS_TERMUX" != "yes" ]; then
         echo ""
         install_system_deps
         install_optional_deps
+    fi
+
+    # ── Termux system deps (using pkg) ──
+    if [ "$IS_TERMUX" = "yes" ]; then
+        echo ""
+        info "Termux detected — installing Python deps via pkg..."
+        pkg update -y 2>/dev/null || true
+        pkg install -y python ninja 2>/dev/null || true
     fi
 
     echo ""
@@ -528,6 +660,12 @@ main() {
         VENV_DIR="$INSTALL_DIR/.venv"
     fi
 
+    # ── Playwright / Browser installation ──
+    if [ "$INSTALL_BROWSER" = "yes" ]; then
+        echo ""
+        install_playwright_browsers "$VENV_DIR"
+    fi
+
     # Shell integration
     if [ "$SKIP_SHELL" != "yes" ]; then
         echo ""
@@ -545,6 +683,11 @@ main() {
             echo ""
             if _yes_no "  Install default skills?" "Y"; then
                 "$VENV_DIR/bin/delux" install-skills
+            fi
+            if [ "$INSTALL_BROWSER" != "yes" ]; then
+                if _yes_no "  Install browser automation (Playwright + Chromium for web tasks)?" "Y"; then
+                    install_playwright_browsers "$VENV_DIR"
+                fi
             fi
             SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
             if [ -d "$SCRIPT_DIR/dataset_hermes" ]; then
@@ -570,13 +713,13 @@ for p, src in paths:
 print(f'  Total: {total} entries in dataset RAG')
                     " 2>&1 || echo "  (dataset import skipped)"
                 fi
-            elif [ -f "$SCRIPT_DIR/assets/dataset-rag.jsonl.gz" ]; then
+            elif [ -f "$SCRIPT_DIR/rag-raw/dataset-rag.jsonl.gz" ]; then
                 if _yes_no "  Install pre-built agent trajectory RAG?" "Y"; then
                     DEST="$HOME/.delux/dataset-rag"
                     mkdir -p "$DEST"
-                    cp "$SCRIPT_DIR/assets/dataset-rag.jsonl.gz" "$DEST/entries.jsonl.gz"
+                    cp "$SCRIPT_DIR/rag-raw/dataset-rag.jsonl.gz" "$DEST/entries.jsonl.gz"
                     echo '{"prebuilt":1}' > "$DEST/manifest.json"
-                    echo "  Installed pre-built RAG (241MB compressed)"
+                    echo "  Installed pre-built RAG"
                 fi
             else
                 info "Dataset files not found in $SCRIPT_DIR, skipping RAG import."

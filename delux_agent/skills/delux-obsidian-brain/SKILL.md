@@ -23,8 +23,11 @@ Knowledge Base manager for deep learning and research. Stores technical notes, c
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-obsidian-brain","args":"add Kubernetes "Learned: kubectl port-forward enables local access to pods" -l Networking Debugging","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-obsidian-brain</skill>
+<args>add Kubernetes "Learned: kubectl port-forward enables local access to pods" -l Networking Debugging</args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns result
@@ -36,11 +39,19 @@ Knowledge Base manager for deep learning and research. Stores technical notes, c
 ```
 --- delux-obsidian-brain example ---
 USER: "save that nginx config fix for later"
-AGENT: {"action":"read_file","path":"/etc/nginx/sites-enabled/default"}
+AGENT:
+<action>read_file</action>
+<path>/etc/nginx/sites-enabled/default</path>
 RESULT: (file content)
-AGENT: {"action":"run_skill","skill":"delux-obsidian-brain","args":"add Nginx "Fixed reverse proxy by adding proxy_pass http://localhost:3000" -l WebServer Proxy","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-obsidian-brain</skill>
+<args>add Nginx "Fixed reverse proxy by adding proxy_pass http://localhost:3000" -l WebServer Proxy</args>
+<timeout>15</timeout>
 RESULT: ✅ Added content to note: [[Nginx]]
-NEXT ACTION: {"action":"remember","note":"Saved nginx reverse proxy fix to knowledge base"}
+NEXT ACTION:
+<action>remember</action>
+<note>Saved nginx reverse proxy fix to knowledge base</note>
 ```
 
 ## Caveats

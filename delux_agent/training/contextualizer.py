@@ -170,15 +170,36 @@ a self-contained, optimized prompt for Delux, an autonomous AI shell agent.
 
 ═══════════════════════════════════════════════════════════
 AGENT ACTION FORMAT (for your reference — VERY IMPORTANT)
-The main Delux agent understands ONLY JSON actions like these:
-  {"action":"shell","command":"ls -la","timeout":60}
-  {"action":"read_file","path":"relative/path"}
-  {"action":"write_file","path":"path","content":"..."}
-  {"action":"edit_file","path":"path","old_str":"...","new_str":"..."}
-  {"action":"run_skill","skill":"skill-slug","args":"..."}
-  {"action":"search_files","query":"text"}
-  {"action":"remember","note":"..."}
-  {"action":"final","message":"..."}
+The main Delux agent understands ONLY XML actions like these:
+<action>shell</action>
+<command>ls -la</command>
+<timeout>60</timeout>
+---
+<action>read_file</action>
+<path>relative/path</path>
+---
+<action>write_file</action>
+<path>path</path>
+<content>...</content>
+---
+<action>edit_file</action>
+<path>path</path>
+<old_str>...</old_str>
+<new_str>...</new_str>
+---
+<action>run_skill</action>
+<skill>skill-slug</skill>
+<args>...</args>
+---
+<action>search_files</action>
+<query>text</query>
+---
+<action>remember</action>
+<note>...</note>
+---
+<action>final</action>
+<message>...</message>
+---
 Your job is to give the agent EXACTLY the context it needs to pick the right action.
 ═══════════════════════════════════════════════════════════
 
@@ -200,13 +221,13 @@ RULES:
 - ALWAYS preserve: error messages, IPs, file paths, credentials, and plan status.
 - EFFICIENCY: Encourage the agent to double-check targets before running heavy operations.
 
-Return ONLY a JSON action object:
-{
-  "prompt": "The actual text the agent will see",
-  "reasoning": "Internal reasoning (hidden from agent)",
-  "relevant_skills": ["skill-name"],
-  "relevant_memory": ["fact"]
-}
+Return ONLY a response in XML format:
+<contextualizer>
+<prompt>The actual text the agent will see</prompt>
+<reasoning>Internal reasoning (hidden from agent)</reasoning>
+<relevant_skills>skill-name</relevant_skills>
+<relevant_memory>fact</relevant_memory>
+</contextualizer>
 """
 
 # ── Core Contextualizer Class ─────────────────────────────────────────────────
@@ -219,8 +240,19 @@ class Contextualizer:
     def is_enabled(self) -> bool:
         return self.ctx_cfg.enabled
 
-    def _extract_json(self, text: str) -> dict:
-        """Robustly extracts JSON from potentially noisy model output."""
+    def _extract_structured(self, text: str) -> dict:
+        """Extract structured data from model output (XML or JSON fallback)."""
+        prompt_m = re.search(r"<prompt>([\s\S]*?)</prompt>", text)
+        reasoning_m = re.search(r"<reasoning>([\s\S]*?)</reasoning>", text)
+        skills_m = re.findall(r"<relevant_skills>([^<]*)</relevant_skills>", text)
+        memory_m = re.findall(r"<relevant_memory>([^<]*)</relevant_memory>", text)
+        if prompt_m:
+            return {
+                "prompt": prompt_m.group(1).strip(),
+                "reasoning": reasoning_m.group(1).strip() if reasoning_m else "",
+                "relevant_skills": skills_m or [],
+                "relevant_memory": memory_m or [],
+            }
         try:
             return json.loads(text.strip())
         except json.JSONDecodeError:
@@ -377,19 +409,11 @@ class Contextualizer:
             text = response.text.strip()
             print(f"[DEBUG] Contextualizer: Raw LLM response: {text[:200]}...")
 
-            # ── Stage 5: Robust JSON extraction ───────────────────────────────
-            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-            text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+            # ── Stage 5: Robust structured extraction (XML preferred, JSON fallback) ──
+            data = self._extract_structured(text)
 
-            json_start = text.find("{")
-            json_end = text.rfind("}")
-            if json_start >= 0 and json_end > json_start:
-                text = text[json_start:json_end + 1]
-
-            try:
-                data = json.loads(text)
-            except json.JSONDecodeError:
-                data = {"prompt": user_prompt, "changes": ["Error: Model output not valid JSON. Using raw prompt."]}
+            if not data or "prompt" not in data:
+                data = {"prompt": user_prompt, "changes": ["Error: Model output not valid format. Using raw prompt."]}
 
             optimized = data.get("prompt", user_prompt)
             if not optimized or not isinstance(optimized, str) or len(optimized.strip()) < 5:
@@ -397,8 +421,8 @@ class Contextualizer:
 
             changes: list[str] = prefilter_changes + (data.get("changes") or [])
             original_lang: str = data.get("original_language", "en")
-            filtered_skills: list[str] = data.get("relevant_skills", [])
-            filtered_memory: list[str] = data.get("relevant_memory", [])
+            filtered_skills: list[str] = data.get("relevant_skills", []) if isinstance(data.get("relevant_skills"), list) else ([data["relevant_skills"]] if data.get("relevant_skills") else [])
+            filtered_memory: list[str] = data.get("relevant_memory", []) if isinstance(data.get("relevant_memory"), list) else ([data["relevant_memory"]] if data.get("relevant_memory") else [])
 
             # Preserve plan failure context if LLM dropped it accidentally
             if plan_context.strip():

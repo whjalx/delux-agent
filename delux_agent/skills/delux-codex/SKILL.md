@@ -31,12 +31,15 @@ Analyzes the given file or project directory for structure, patterns, and best p
 ## Response Examples
 
 ### Agent invokes codex
-```json
-{"action":"run_skill","skill":"delux-codex","args":"src/main.py","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-codex</skill>
+<args>src/main.py</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns analysis (file)
-```json
+```
 {
   "delux_codex": {
     "mode": "analyze",
@@ -51,7 +54,7 @@ Analyzes the given file or project directory for structure, patterns, and best p
 ```
 
 ### Skill returns analysis (directory)
-```json
+```
 {
   "delux_codex": {
     "mode": "analyze",
@@ -70,9 +73,15 @@ Analyzes the given file or project directory for structure, patterns, and best p
 ```
 --- delux-codex example ---
 USER: "review the code in src/main.py"
-AGENT: {"action":"run_skill","skill":"delux-codex","args":"src/main.py","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-codex</skill>
+<args>src/main.py</args>
+<timeout>30</timeout>
 RESULT: {"delux_codex": {"mode": "analyze", "target": "src/main.py", "type": "file", "language": "Python", "status": "ready"}}
-NEXT ACTION: {"action":"read_file","path":"src/main.py"}
+NEXT ACTION:
+<action>read_file</action>
+<path>src/main.py</path>
 ```
 
 ## Caveats

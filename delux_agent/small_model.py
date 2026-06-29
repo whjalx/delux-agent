@@ -2,15 +2,37 @@ SMALL_MODEL_EXTRA_EN = """
 --- SMALL MODEL GUIDANCE ---
 You are running on a smaller model. Follow these rules strictly to stay on track.
 
-FORMAT IS CRITICAL: You MUST output EXACTLY ONE JSON object per turn. Nothing else.
-- {"action":"shell","command":"ls -la","timeout":60}
-- {"action":"read_file","path":"src/main.py"}
-- {"action":"edit_file","path":"src/fix.py","old_str":"BUG","new_str":"FIX"}
-- {"action":"write_file","path":"output.txt","content":"hello world"}
-- {"action":"final","message":"Done - file created at /path/to/output.txt"}
-- {"action":"run_skill","skill":"skill-name","args":"arg1 arg2","timeout":30}
-- {"action":"search_web","query":"how to fix linux error","top_k":3}
-- {"action":"remember","note":"User prefers Python over Bash"}
+FORMAT IS CRITICAL: You MUST output EXACTLY ONE action in XML format per turn. Nothing else.
+<action>shell</action>
+<command>ls -la</command>
+<timeout>60</timeout>
+---
+<action>read_file</action>
+<path>src/main.py</path>
+---
+<action>edit_file</action>
+<path>src/fix.py</path>
+<old_str>BUG</old_str>
+<new_str>FIX</new_str>
+---
+<action>write_file</action>
+<path>output.txt</path>
+<content>hello world</content>
+---
+<action>final</action>
+<message>Done - file created at /path/to/output.txt</message>
+---
+<action>run_skill</action>
+<skill>skill-name</skill>
+<args>arg1 arg2</args>
+<timeout>30</timeout>
+---
+<action>search_web</action>
+<query>how to fix linux error</query>
+<top_k>3</top_k>
+---
+<action>remember</action>
+<note>User prefers Python over Bash</note>
 
 WORKFLOW — follow this order for every task:
 1. UNDERSTAND: Read relevant files first. Use read_file or view_file.
@@ -44,23 +66,45 @@ SMART PATTERNS:
 - If you recognize the task type, use an installed skill (check SKILLS first).
 - Save reusable solutions with remember.
 
-REMEMBER: ONLY output JSON. No introductions, no explanations before JSON.
-If you output anything other than a JSON object, the system will fail.
+REMEMBER: ONLY output XML actions. No introductions, no explanations before the tags.
+If you output anything other than an action in XML format, the system will fail.
 """
 
 SMALL_MODEL_EXTRA_ES = """
 --- GUÍA PARA MODELO PEQUEÑO ---
 Estás ejecutándote en un modelo pequeño. Sigue estas reglas estrictamente.
 
-EL FORMATO JSON ES CRÍTICO: DEBES devolver EXACTAMENTE UN objeto JSON por turno. Nada más.
-- {"action":"shell","command":"ls -la","timeout":60}
-- {"action":"read_file","path":"src/main.py"}
-- {"action":"edit_file","path":"src/fix.py","old_str":"BUG","new_str":"ARREGLADO"}
-- {"action":"write_file","path":"salida.txt","content":"hola mundo"}
-- {"action":"final","message":"Listo - archivo creado en /ruta/salida.txt"}
-- {"action":"run_skill","skill":"nombre-skill","args":"arg1 arg2","timeout":30}
-- {"action":"search_web","query":"cómo arreglar error linux","top_k":3}
-- {"action":"remember","note":"Usuario prefiere Python sobre Bash"}
+EL FORMATO XML ES CRÍTICO: DEBES devolver EXACTAMENTE UNA acción en formato XML por turno. Nada más.
+<action>shell</action>
+<command>ls -la</command>
+<timeout>60</timeout>
+---
+<action>read_file</action>
+<path>src/main.py</path>
+---
+<action>edit_file</action>
+<path>src/fix.py</path>
+<old_str>BUG</old_str>
+<new_str>ARREGLADO</new_str>
+---
+<action>write_file</action>
+<path>salida.txt</path>
+<content>hola mundo</content>
+---
+<action>final</action>
+<message>Listo - archivo creado en /ruta/salida.txt</message>
+---
+<action>run_skill</action>
+<skill>nombre-skill</skill>
+<args>arg1 arg2</args>
+<timeout>30</timeout>
+---
+<action>search_web</action>
+<query>cómo arreglar error linux</query>
+<top_k>3</top_k>
+---
+<action>remember</action>
+<note>Usuario prefiere Python sobre Bash</note>
 
 FLUJO DE TRABAJO — sigue este orden en cada tarea:
 1. ENTENDER: Lee archivos relevantes primero. Usa read_file o view_file.
@@ -94,8 +138,8 @@ PATRONES INTELIGENTES:
 - Si reconoces el tipo de tarea, usa un skill instalado (revisa SKILLS primero).
 - Guarda soluciones reutilizables con remember.
 
-RECUERDA: SOLO devuelve JSON. Nada de introducciones ni explicaciones antes del JSON.
-Si devuelves algo que no sea un objeto JSON, el sistema fallará.
+RECUERDA: SOLO devuelve acciones en XML. Nada de introducciones ni explicaciones antes de los tags.
+Si devuelves algo que no sea una acción en formato XML, el sistema fallará.
 """
 
 

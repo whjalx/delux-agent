@@ -20,8 +20,11 @@ delux-telegram-notify "<message>"
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-telegram-notify","args":"Backup completed successfully. 2.3GB processed.","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-telegram-notify</skill>
+<args>Backup completed successfully. 2.3GB processed.</args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns result
@@ -33,9 +36,15 @@ SUCCESS: Notification sent to Telegram.
 ```
 --- delux-telegram-notify example ---
 USER: "let me know when the deployment finishes"
-AGENT: {"action":"run_skill","skill":"delux-telegram-notify","args":"Deployment finished: all services running.","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-telegram-notify</skill>
+<args>Deployment finished: all services running.</args>
+<timeout>15</timeout>
 RESULT: SUCCESS: Notification sent to Telegram.
-NEXT ACTION: {"action":"final","message":"Notified user via Telegram"}
+NEXT ACTION:
+<action>final</action>
+<message>Notified user via Telegram</message>
 ```
 
 ## Caveats

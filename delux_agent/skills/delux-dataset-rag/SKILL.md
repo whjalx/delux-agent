@@ -28,8 +28,11 @@ delux-dataset-rag clear                     Reset the entire index
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-dataset-rag","args":"few-shot write a python script to parse CSV","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-dataset-rag</skill>
+<args>few-shot write a python script to parse CSV</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -50,7 +53,11 @@ TOOL RESULT: File written
 ```
 --- delux-dataset-rag example ---
 USER: "find similar agent traces for deploying nginx"
-AGENT: {"action":"run_skill","skill":"delux-dataset-rag","args":"few-shot deploy nginx configuration","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-dataset-rag</skill>
+<args>few-shot deploy nginx configuration</args>
+<timeout>30</timeout>
 RESULT: Dataset examples showing real agent traces
 NEXT ACTION: Continue with the task using similar patterns
 ```

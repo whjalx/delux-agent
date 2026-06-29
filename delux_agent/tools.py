@@ -695,12 +695,20 @@ def create_skill(name: str, summary: str, body: str, root: Path,
     return ToolResult(True, f"Created skill `{slug}` at {skill_dir}/SKILL.md")
 
 _AUTO_SECTIONS = {
-    "## Steps": "1. Validate input\n2. Execute logic\n3. Return JSON result",
+    "## Steps": "1. Validate input\n2. Execute logic\n3. Return structured result",
     "## Response Examples": (
         "### Agent invoca la skill\n"
-        '```json\n{"action":"run_skill","skill":"<name>","args":"<args>","timeout":30}\n```\n'
+        "```\n"
+        "<action>run_skill</action>\n"
+        "<skill>SKILL_NAME</skill>\n"
+        "<args>ARGS_HERE</args>\n"
+        "<timeout>30</timeout>\n"
+        "```\n"
         "### Skill devuelve resultado\n"
-        '```json\n{"status":"ok","result":"..."}\n```'
+        "```\n"
+        "status: ok\n"
+        "result: ...\n"
+        "```\n"
     ),
     "## When To Use": "- Similar patterns or problems\n- Ad-hoc as needed",
 }
@@ -1115,73 +1123,73 @@ def discover_mcp_tools(server_name: str, root: Path) -> ToolResult:
 
 # ── Browser tools ──────────────────────────────────────────────────────
 
-def browser_navigate(url: str, timeout: int = 30) -> ToolResult:
+def browser_navigate(url: str, timeout: int = 30, headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().navigate(url, timeout=timeout)
+        result = get_browser(headed=headed).navigate(url, timeout=timeout)
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_click(selector: str) -> ToolResult:
+def browser_click(selector: str, headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().click(selector)
+        result = get_browser(headed=headed).click(selector)
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_type(selector: str, text: str) -> ToolResult:
+def browser_type(selector: str, text: str, headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().type(selector, text)
+        result = get_browser(headed=headed).type(selector, text)
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_scroll(direction: str = "down", amount: int = 500) -> ToolResult:
+def browser_scroll(direction: str = "down", amount: int = 500, headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().scroll(direction, amount)
+        result = get_browser(headed=headed).scroll(direction, amount)
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_snapshot() -> ToolResult:
+def browser_snapshot(headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().snapshot()
+        result = get_browser(headed=headed).snapshot()
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_back() -> ToolResult:
+def browser_back(headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().back()
+        result = get_browser(headed=headed).back()
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_screenshot(full_page: bool = False) -> ToolResult:
+def browser_screenshot(full_page: bool = False, headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().screenshot(full_page=full_page)
+        result = get_browser(headed=headed).screenshot(full_page=full_page)
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))
 
 
-def browser_extract() -> ToolResult:
+def browser_extract(headed: bool = False) -> ToolResult:
     from .browser import get_browser
     try:
-        result = get_browser().extract_text()
+        result = get_browser(headed=headed).extract_text()
         return ToolResult(result.ok, result.output)
     except RuntimeError as e:
         return ToolResult(False, str(e))

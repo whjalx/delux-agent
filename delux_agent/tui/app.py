@@ -60,14 +60,16 @@ COMMANDS: list[tuple[str, str, str]] = [
     ("/cd", "<path>", "Cambia el directorio de trabajo"),
     ("/new-skill", "<nombre>", "Crea una nueva skill"),
     ("/rs, /record-skill", "", "Crea una skill interactiva (graba comandos uno por uno)"),
+    ("/retry", "", "Reintenta el último prompt"),
+    ("/reset", "", "Reinicia la sesión actual"),
+    ("/stats", "", "Estadísticas de la sesión"),
     ("/save", "[título]", "Guarda la sesión actual"),
     ("/lang", "<en|es>", "Cambia el idioma"),
     ("/model", "[idx|add ...]", "Lista/ cambia/ añade modelos"),
     ("/vm", "[idx|off]", "Selecciona modelo de validación"),
     ("/sidebar", "[on|off]", "Muestra/oculta el panel lateral (Ctrl+B)"),
     ("/ctx, /contextualize", "", "Estado del contextualizador"),
-    ("/index", "[build|rebuild]", "Gestiona el índice del proyecto"),
-    ("/m, /mcp", "[add|rm|toggle|tools]", "Gestiona servidores MCP"),
+    ("/m, /mcp", "[add|rm|toggle|tools|reload]", "Gestiona servidores MCP"),
     ("/template", "[model] [strategy|suffix ...]", "Muestra/configura plantilla de modelo"),
     ("/train, /tr", "[stats|list|clear|export]", "Gestiona ejemplos de feedback"),
     ("/compact", "", "Comprime el historial de conversación"),
@@ -179,17 +181,24 @@ class DeluxTUI(App):
                 yield Label("", id="sidebar-modes", classes="sidebar-value")
                 yield Label("Estado", classes="sidebar-label")
                 yield Label("Listo", id="sidebar-status", classes="sidebar-value")
+                yield Label("Tareas", id="sidebar-tasks-title", classes="sidebar-label")
+                yield RichLog(id="sidebar-tasks", highlight=True, markup=True, wrap=True)
         with Container(id="input-row"):
             yield Static("BUILD", id="mode-indicator")
             yield Input(placeholder="Escribe tu mensaje o /help...", id="prompt-input")
         yield Footer()
 
     def on_mount(self) -> None:
+        self._start_proxy_if_needed()
         self._show_splash()
         self._show_small_model_tip()
         self._update_mode_indicator()
         self._update_mode_indicator()
         self.query_one("#prompt-input", Input).focus()
+
+    def _start_proxy_if_needed(self) -> None:
+        from ..ddg_proxy import ensure_proxy
+        ensure_proxy(self._config)
 
     def _show_small_model_tip(self) -> None:
         from ..config import is_small_model
@@ -355,13 +364,15 @@ class DeluxTUI(App):
             "/cd": "cd",
             "/new-skill": "new_skill",
             "/record-skill": "record_skill", "/rs": "record_skill",
+            "/retry": "retry",
+            "/reset": "reset",
+            "/stats": "stats",
             "/save": "save",
             "/lang": "lang",
             "/model": "model",
             "/vm": "vm",
             "/sidebar": "sidebar",
             "/ctx": "ctx", "/contextualize": "ctx",
-            "/index": "index",
             "/m": "mcp", "/mcp": "mcp",
             "/template": "template",
             "/ft": "finetune", "/finetune": "finetune",
@@ -456,6 +467,40 @@ class DeluxTUI(App):
 
     async def _cmd_clear(self, args: list[str]) -> None:
         self._show_splash()
+
+    async def _cmd_retry(self, args: list[str]) -> None:
+        if not self._prompt_history:
+            self._write_chat(Text("  No hay prompts anteriores para reintentar.", style="dim"))
+            return
+        last_prompt = self._prompt_history[-1]
+        self._write_chat(Text(f"  Reintentando: {last_prompt[:80]}", style="bold green"))
+        self._stream_response(last_prompt)
+
+    async def _cmd_reset(self, args: list[str]) -> None:
+        self._conversation = []
+        self._prompt_history = []
+        self._session_summary = ""
+        self._answer_count = 0
+        self._total_tokens = 0
+        self._write_chat(Text("  Sesión reiniciada.", style="green"))
+
+    async def _cmd_stats(self, args: list[str]) -> None:
+        from ..config import is_small_model
+        table = Table(box=box.SIMPLE, border_style="dim", padding=(0, 1))
+        table.add_column("Métrica", style="bold cyan")
+        table.add_column("Valor", style="white")
+        table.add_row("Prompts enviados", str(self._answer_count))
+        table.add_row("Tokens totales", str(self._total_tokens))
+        table.add_row("Conversación", f"{len(self._conversation)} turnos")
+        table.add_row("Modelo activo", self._model_name)
+        table.add_row("CWD", str(self._cwd))
+        table.add_row("Plan", "ON" if self._plan_mode else "OFF")
+        table.add_row("Validación", self._validate_mode.upper())
+        small_flag = " ✓" if (self._config.small_model or is_small_model(self._config.model)) else ""
+        chunk_val = f"{self._config.cache_chunk_size} tokens" if self._config.cache_chunk_size > 0 else "off"
+        table.add_row("Caché", f"{chunk_val}{small_flag}")
+        table.add_row("Idioma", self._lang)
+        self._write_chat(Text("\n  Estadísticas:\n", style="bold"), table)
 
     async def _cmd_status(self, args: list[str]) -> None:
         c = self._config
@@ -934,22 +979,30 @@ Summary: {summary}
 ## Response Examples
 
 ### Agent invoca la skill
-```json
-{{"action":"run_skill","skill":"{slug}","args":"{args_json}","timeout":30}}
+```xml
+<action>run_skill</action>
+<skill>{slug}</skill>
+<args>{args_json}</args>
+<timeout>30</timeout>
 ```
 
 ### Skill devuelve resultado
-```json
-{{"status":"ok","result":"done"}}
+```
+status: ok
+result: done
 ```
 
 ### Prompt injection example
 ```
 --- {slug} example ---
 USER: "<task description>"
-AGENT: {{"action":"run_skill","skill":"{slug}","args":"{args_json}","timeout":30}}
-RESULT: {{"status":"ok","result":"done"}}
-NEXT ACTION: {{"action":"final","answer":"Task completed."}}
+AGENT: <action>run_skill</action>
+<skill>{slug}</skill>
+<args>{args_json}</args>
+<timeout>30</timeout>
+RESULT: status: ok, result: done
+NEXT ACTION: <action>final</action>
+<message>Task completed.</message>
 ```
 
 ## Caveats
@@ -1063,17 +1116,27 @@ NEXT ACTION: {{"action":"final","answer":"Task completed."}}
 
     async def _cmd_save(self, args: list[str]) -> None:
         title = " ".join(args).strip() or "manual-session"
-        history = "\n".join(f"- {p}" for p in self._prompt_history) or "- none"
-        body = "\n".join([
-            "# Delux IDE Notes",
+        body_lines = [
+            "# Delux IDE Session",
             "",
             f"- CWD: {self._cwd}",
+            f"- Model: {self._model_name}",
+            f"- Turns: {len(self._conversation)}",
             "",
-            "## Prompt History",
+            "## Conversation",
             "",
-            history,
-            "",
-        ])
+        ]
+        for i, turn in enumerate(self._conversation, 1):
+            body_lines.append(f"### Turn {i}")
+            body_lines.append(f"**User:** {turn['prompt']}")
+            body_lines.append("")
+            body_lines.append(f"**Assistant:** {turn['answer']}")
+            body_lines.append("")
+        if not self._conversation and self._prompt_history:
+            body_lines.append("## Prompt History")
+            for p in self._prompt_history:
+                body_lines.append(f"- {p}")
+        body = "\n".join(body_lines)
         try:
             path = save_session_markdown(self._config.sessions_dir, title, body)
             self._write_chat(Text(f"  Sesión guardada: {path.name}", style="green"))
@@ -1194,17 +1257,98 @@ NEXT ACTION: {{"action":"final","answer":"Task completed."}}
         except Exception as e:
             self._write_chat(Text(f"  Error: {e}", style="red"))
 
-    async def _cmd_index(self, args: list[str]) -> None:
-        self._write_chat(
-            Text("  /index no está disponible en la interfaz TUI todavía.", style="yellow"),
-            Text("  Usa la CLI clásica: `delux index build`", style="dim"),
-        )
-
     async def _cmd_mcp(self, args: list[str]) -> None:
-        self._write_chat(
-            Text("  /mcp no está disponible en la interfaz TUI todavía.", style="yellow"),
-            Text("  Usa la CLI clásica: `delux mcp`", style="dim"),
+        from ..mcp import (
+            load_mcp_servers, add_mcp_server, remove_mcp_server,
+            toggle_mcp_server, discover_tools, cache_tools,
+            load_cached_tools, MCPServerEntry,
         )
+        root = self._config.root
+
+        if not args:
+            servers = load_mcp_servers(root)
+            if not servers:
+                self._write_chat(Text("  No hay servidores MCP configurados.", style="dim"))
+                self._write_chat(Text("  Usa /mcp add <name> <command> [args...] para añadir uno.", style="dim"))
+                return
+            table = Table(box=box.SIMPLE, border_style="dim", padding=(0, 1))
+            table.add_column("Servidor", style="bold cyan")
+            table.add_column("Estado", style="white")
+            table.add_column("Comando", style="dim")
+            table.add_column("Descripción", style="dim")
+            for s in servers:
+                status = "✅ ON" if s.enabled else "⛔ OFF"
+                table.add_row(s.name, status, f"{s.command} {' '.join(s.args[:2])}", s.description or "—")
+            self._write_chat(Text("\n  Servidores MCP:\n", style="bold"), table)
+            cached = load_cached_tools(root)
+            if cached:
+                tools_info = ", ".join(f"{s}: {len(t)} tools" for s, t in cached.items())
+                self._write_chat(Text(f"  Tools cacheadas: {tools_info}", style="dim"))
+            self._write_chat(
+                Text("  /mcp add <name> <cmd> [args]  |  /mcp rm <name>  |  /mcp toggle <name>  |  /mcp reload", style="dim"),
+            )
+            return
+
+        cmd = args[0]
+
+        if cmd == "add" and len(args) >= 3:
+            name = args[1]
+            command = args[2]
+            extra_args = args[3:]
+            try:
+                add_mcp_server(root, MCPServerEntry(
+                    name=name, command=command, args=extra_args,
+                    description=f"MCP {name}",
+                ))
+                self._write_chat(Text(f"  Servidor MCP añadido: {name} ({command})", style="green"))
+            except Exception as e:
+                self._write_chat(Text(f"  Error: {e}", style="red"))
+            return
+
+        if cmd == "rm" and len(args) >= 2:
+            name = args[1]
+            if remove_mcp_server(root, name):
+                self._write_chat(Text(f"  Servidor MCP eliminado: {name}", style="green"))
+            else:
+                self._write_chat(Text(f"  Servidor no encontrado: {name}", style="red"))
+            return
+
+        if cmd == "toggle" and len(args) >= 2:
+            name = args[1]
+            if toggle_mcp_server(root, name):
+                servers = load_mcp_servers(root)
+                status = next((s.enabled for s in servers if s.name == name), None)
+                state = "ON" if status else "OFF"
+                self._write_chat(Text(f"  Servidor MCP {name}: {state}", style="green"))
+            else:
+                self._write_chat(Text(f"  Servidor no encontrado: {name}", style="red"))
+            return
+
+        if cmd in ("reload", "tools", "discover"):
+            servers = load_mcp_servers(root)
+            enabled = [s for s in servers if s.enabled]
+            if not enabled:
+                self._write_chat(Text("  No hay servidores habilitados para descubrir tools.", style="dim"))
+                return
+            self._write_chat(Text(f"  Descubriendo tools de {len(enabled)} servidor(es)...", style="bold yellow"))
+            try:
+                all_tools = discover_tools(root)
+                cache_tools(root, all_tools)
+                table = Table(box=box.SIMPLE, border_style="dim", padding=(0, 1))
+                table.add_column("Servidor", style="bold cyan")
+                table.add_column("Tools", style="white")
+                for server, tools in all_tools.items():
+                    names = ", ".join(t.name for t in tools if t.name != "error")
+                    errors = [t.description for t in tools if t.name == "error"]
+                    val = names if names else (f"⚠ {errors[0]}" if errors else "—")
+                    table.add_row(server, val)
+                self._write_chat(Text("\n  Tools MCP descubiertas:\n", style="bold"), table)
+            except Exception as e:
+                self._write_chat(Text(f"  Error descubriendo tools: {e}", style="red"))
+            return
+
+        self._write_chat(Text(f"  Comando MCP desconocido: {cmd}", style="yellow"))
+        self._write_chat(Text("  Usa: /mcp [add|rm|toggle|tools|reload]", style="dim"))
 
     async def _cmd_template(self, args: list[str]) -> None:
         from ..templates import list_templates, get_model_template, set_template
@@ -1591,6 +1735,11 @@ NEXT ACTION: {{"action":"final","answer":"Task completed."}}
                 a = str(action.get("args", ""))[:80]
                 self._write_chat(Text(f"  \u2192 skill  {s}  {a}", style="yellow"))
                 self._action_lines += 1
+            elif kind == "call_mcp":
+                server = str(action.get("server", ""))
+                tool = str(action.get("tool", ""))
+                self._write_chat(Text(f"  \u2192 mcp  {server}.{tool}", style="bold magenta"))
+                self._action_lines += 1
             elif kind == "final":
                 pass
             else:
@@ -1677,6 +1826,22 @@ NEXT ACTION: {{"action":"final","answer":"Task completed."}}
             changes = payload.get("changes", "")
             if changes:
                 self._write_chat(Text(f"  Contexto optimizado: {changes}", style="dim"))
+
+        elif event == "tasks_updated":
+            self._update_tasks_sidebar(payload.get("tasks", []))
+
+    def _update_tasks_sidebar(self, tasks: list[dict]) -> None:
+        task_log = self.query_one("#sidebar-tasks", RichLog)
+        task_log.clear()
+        if not tasks:
+            task_log.write(Text("(ninguna)", style="dim"))
+            return
+        for t in tasks:
+            desc = t.get("desc", "?")
+            done = t.get("done", False)
+            icon = "✓" if done else "○"
+            style = "green" if done else "yellow"
+            task_log.write(Text(f"  {icon} {desc}", style=style))
 
     def _on_agent_done(self, result, elapsed: float) -> None:
         if self._buffer and not self._answer_written:

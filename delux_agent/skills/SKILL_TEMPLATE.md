@@ -28,25 +28,30 @@ One line describing what this skill does.
 ## Response Examples (REQUIRED)
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"<name>","args":"<arguments>","timeout":30}
+```
+<action>run_skill</action>
+<skill>SKILL_NAME</skill>
+<args>ARGUMENTS</args>
+<timeout>30</timeout>
 \```
 
 ### Skill returns result
-```json
-{
-  "field": "value",
-  "status": "ok"
-}
+```
+field: value
+status: ok
 \```
 
 ### Prompt injection example
 \```
---- <name> example ---
+--- SKILL_NAME example ---
 USER: "<example user input>"
-AGENT: {"action":"run_skill","skill":"<name>","args":"<args>","timeout":30}
-RESULT: {"field": "value", "status": "ok"}
-NEXT ACTION: {"action":"shell/final/read_file","..."}
+AGENT: <action>run_skill</action>
+<skill>SKILL_NAME</skill>
+<args>ARGS</args>
+<timeout>30</timeout>
+RESULT: field: value, status: ok
+NEXT ACTION: <action>shell</action>
+<command>...</command>
 \```
 ```
 
@@ -75,8 +80,8 @@ if __name__ == "__main__":
 ## 3. Response JSON (required for all skills even without exec)
 
 Every skill MUST document in `SKILL.md`:
-- **Input JSON**: what the agent sends to invoke it (`{"action":"run_skill","skill":"...","args":"..."}`)
-- **Output JSON**: what the skill returns when executed
+- **Input XML**: what the agent sends to invoke it (`<action>run_skill</action>\n<skill>SKILL_NAME</skill>\n<args>ARGUMENTS</args>\n<timeout>30</timeout>`)
+- **Output text**: what the skill returns when executed
 - **Prompt injection example**: the full flow USER → AGENT → RESULT → NEXT ACTION
 
 This allows even small models to learn the exact format by reading the file.

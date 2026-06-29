@@ -27,12 +27,15 @@ Runs OpenCode with the given prompt in the current working directory.
 ## Response Examples
 
 ### Delegate a refactoring task to OpenCode
-```json
-{"action":"run_skill","skill":"delux-opencode","args":"refactor src/utils.py to use async/await pattern","timeout":300}
+```
+<action>run_skill</action>
+<skill>delux-opencode</skill>
+<args>refactor src/utils.py to use async/await pattern</args>
+<timeout>300</timeout>
 ```
 
 ### Skill returns result
-```json
+```
 {
   "status": "ok",
   "returncode": 0,
@@ -42,7 +45,7 @@ Runs OpenCode with the given prompt in the current working directory.
 ```
 
 ### OpenCode fails
-```json
+```
 {
   "status": "error",
   "returncode": 1,
@@ -55,9 +58,16 @@ Runs OpenCode with the given prompt in the current working directory.
 ```
 --- delux-opencode example ---
 USER: "refactor the utils module to be async"
-AGENT: {"action":"run_skill","skill":"delux-opencode","args":"refactor src/utils.py to async/await","timeout":300}
+AGENT:
+<action>run_skill</action>
+<skill>delux-opencode</skill>
+<args>refactor src/utils.py to async/await</args>
+<timeout>300</timeout>
 RESULT: {"status":"ok","returncode":0,"output":"Refactored src/utils.py to use async/await..."}
-NEXT ACTION: {"action":"shell","command":"python3 -m pytest src/test_utils.py","timeout":60}
+NEXT ACTION:
+<action>shell</action>
+<command>python3 -m pytest src/test_utils.py</command>
+<timeout>60</timeout>
 ```
 
 ## Caveats

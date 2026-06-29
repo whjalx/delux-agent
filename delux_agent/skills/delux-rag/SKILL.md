@@ -29,8 +29,11 @@ delux-rag remove <path>          Remove a file from the index
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-rag","args":"index /home/user/project","timeout":60}
+```
+<action>run_skill</action>
+<skill>delux-rag</skill>
+<args>index /home/user/project</args>
+<timeout>60</timeout>
 ```
 
 ### Skill returns result
@@ -42,9 +45,15 @@ Indexed 47 files (312 chunks)
 ```
 --- delux-rag example ---
 USER: "find all database connection code in the project"
-AGENT: {"action":"run_skill","skill":"delux-rag","args":"query database connection","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-rag</skill>
+<args>query database connection</args>
+<timeout>30</timeout>
 RESULT: RAG Results showing matching code chunks with file paths and line numbers
-NEXT ACTION: {"action":"read_file","path":"src/db.py"}
+NEXT ACTION:
+<action>read_file</action>
+<path>src/db.py</path>
 ```
 
 ## Caveats

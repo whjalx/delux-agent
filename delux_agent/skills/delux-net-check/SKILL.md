@@ -21,8 +21,11 @@ Run without arguments: `delux-net-check`
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-net-check","args":"","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-net-check</skill>
+<args></args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -41,9 +44,15 @@ Public IP: 203.0.113.42
 ```
 --- delux-net-check example ---
 USER: "check if the server has internet access"
-AGENT: {"action":"run_skill","skill":"delux-net-check","args":"","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-net-check</skill>
+<args></args>
+<timeout>30</timeout>
 RESULT: All checks passed
-NEXT ACTION: {"action":"final","message":"Server has full network connectivity"}
+NEXT ACTION:
+<action>final</action>
+<message>Server has full network connectivity</message>
 ```
 
 ## Caveats

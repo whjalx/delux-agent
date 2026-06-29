@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -28,7 +29,7 @@ from .tools import (
     kanban_add, kanban_list, kanban_move, kanban_show, kanban_delete, kanban_update,
     computer_screenshot, computer_click, computer_type, computer_keypress, computer_size,
 )
-from .templates import parse_action, get_model_template, get_action_format_instructions, record_successful_strategy
+from .templates import parse_action, get_model_template, get_action_format_instructions, record_successful_strategy, action_to_xml
 from .plan_executor import PlanExecutor
 from .training.examples import get_few_shot_examples  # noqa: direct import to avoid circular via __init__
 
@@ -56,16 +57,17 @@ Workspace:
 Smart Patterns:
 - BEFORE acting on complex tasks: decompose the problem into clear steps
 - BEFORE starting: use load_experience to check if a similar task was solved before
+- FOR multi-step work: call set_tasks to create a checklist, then task_done as you complete each item
 - ON errors: try a different approach. If you've tried 3+ approaches, use search_web
 - AFTER a success: save the solution with save_experience so you never have to solve it again
 - BEFORE final: confirm all requirements are met, verify the solution works, and no loose ends
 
-JSON FORMAT RULE: Every skill returns JSON. When you call run_skill, the result will be a JSON string. Parse it to decide the next action. Study the injection examples below — they show the exact JSON flow for every action type.
-
 SKILL ACCESS:
 - Skills are listed as "name: summary → path". This is a brief reference only.
 - BEFORE using a skill: read its full SKILL.md with view_file to understand usage, steps, and examples.
-- Example: to use delux-browser, first do: {"action":"view_file","path":"skills/delux-browser/SKILL.md"}
+- Example: to use delux-browser, first do:
+  <action>view_file</action>
+  <path>skills/delux-browser/SKILL.md</path>
 
 SKILL MANAGEMENT:
 - All skills live in DELUX_HOME/skills/. This is the ONLY canonical location for skills.
@@ -78,7 +80,7 @@ SKILL MANAGEMENT:
 CREATING NEW SKILLS:
 - To create a new skill, FIRST read the file at SKILL_TEMPLATE path (shown in context) to learn the standard format
 - Then read any existing skill from SKILLS: as a reference example
-- Every skill MUST include: Summary, When To Use, Steps, Response Examples with JSON in/out, and a Prompt injection example
+- Every skill MUST include: Summary, When To Use, Steps, Response Examples with XML in/out, and a Prompt injection example
 - Use the action create_skill to create the SKILL.md, then write_file to create exec.py if needed
 - After creating, use remember to log it in memory
 
@@ -89,7 +91,9 @@ AUTO-MEMORY RULE: Before using "final", automatically evaluate if you learned so
 - Configuration details, IPs, paths, credentials locations → remember
 
 VERIFICATION PATTERNS (MANDATORY — use these AFTER creating or editing files):
-- After write_file/edit_file → verify_file to check syntax: {"action":"verify_file","path":"file.py"}
+- After write_file/edit_file → verify_file to check syntax:
+  <action>verify_file</action>
+  <path>file.py</path>
 - After creating a script → run it: `python3 script.py > /tmp/verify.log 2>&1; view_file /tmp/verify.log`
 - After editing a config → validate with the tool's check (e.g. nginx -t, sshd -t)
 - After any shell command → check exit code and output carefully
@@ -98,72 +102,208 @@ VERIFICATION PATTERNS (MANDATORY — use these AFTER creating or editing files):
 
 Rules:
 - Never use sudo or privilege escalation
-- Work autonomously. Return ONLY a JSON action object.
+- Work autonomously. Return ONLY an action in XML format.
 - Shell commands run in POSIX sh. Use portable syntax (no fish-specific features).
 - For modifying existing files, ALWAYS use edit_file instead of shell echo/sed. Only use write_file for new files or full rewrites.
-- JSON FORMAT: Never use literal newlines or tabs inside a JSON value. Always use escaped characters like \\n and \\t.
 - PATH RULE: All relative paths are resolved against CURRENT_CWD. Use absolute paths (starting with /) for files outside CWD. Never use ~ or $HOME in paths. If unsure where you are, run pwd first.
 - CODE: Do not deliver code blocks in the "final" action. If you need to create a file, use "write_file". "final" is only for a brief summary.
 - PLAN DISCIPLINE: If you receive a "!!! PLAN IN PROGRESS !!!" banner, you CANNOT use "final" until all plan steps are SUCCESS.
 - MEMORY & LEARNING: BEFORE using "final", ALWAYS evaluate if you learned a new technical solution, code pattern, or user preference. If yes, save it using "remember" (for user facts) or "run_skill" with "delux-obsidian-brain" (for technical knowledge).
 - BROWSER (STATEFUL SESSION): Native browser actions (browser_navigate, browser_click, browser_type, browser_snapshot, browser_scroll, browser_back) keep the browser OPEN between steps. Use for multi-step workflows: login → navigate → extract. Start with browser_snapshot to see the page, then interact.
 - BROWSER (STATELESS): The skill `delux-browser` does ONE action and CLOSES the browser. Use run_skill for simple: "get text from this URL", "screenshot this page", "extract table data". Each call is independent.
+- SHOWING THE BROWSER: Add headed mode to any browser action to make the browser window VISIBLE. Use this when the user says "show me", "let me see", "quiero ver", "muéstrame". The window appears so the user can watch.
 - DECISION GUIDE: Need to CLICK → WAIT → TYPE across pages? Use native browser actions. Just need TEXT or SCREENSHOT from one URL? Use run_skill delux-browser.
 
 After each action you receive a result:
-- If result starts with "SUCCESS:": the action succeeded. Do NOT repeat it. Either proceed to the NEXT step or, if all steps are done, respond with {"action":"final","message":"brief summary"}.
+- If result starts with "SUCCESS:": the action succeeded. Do NOT repeat it. Either proceed to the NEXT step or, if all steps are done, respond with:
+  <action>final</action>
+  <summary>What was requested vs what was done</summary>
+  <message>brief summary</message>
 - If result starts with "ERROR:": analyze the error and try a DIFFERENT approach. NEVER repeat the same failing command.
 
-Allowed actions (return exactly one JSON object):
-{"action":"shell","command":"command","timeout":60}
-{"action":"shell_secure","command":"command","timeout":15}
-{"action":"view_file","path":"relative/path","line_start":1,"line_end":50}
-{"action":"verify_file","path":"script.py"}
-{"action":"read_file","path":"relative/path"}
-{"action":"write_file","path":"relative/path","content":"..."}
-{"action":"edit_file","path":"relative/path","old_str":"text to replace","new_str":"replacement text","replace_all":false}
-{"action":"patch_file","path":"relative/path","old_str":"text to replace","new_str":"replacement text"}
-{"action":"append_file","path":"relative/path","content":"..."}
-{"action":"move_file","src":"path","dst":"path"}
-{"action":"search_files","query":"text"}
-{"action":"rag_query","query":"search text","top_k":5}
-{"action":"rag_index","path":"/path/to/index"}
-{"action":"search_web","query":"search query","top_k":5}
-{"action":"save_experience","task":"task done","solution":"how it was solved","tags":["tag1"]}
-{"action":"load_experience","task":"task to find"}
-{"action":"run_skill","skill":"skill-slug","args":"args","timeout":30}
-{"action":"create_skill","name":"name","summary":"...","body":"..."}
-{"action":"remember","note":"..."}
-{"action":"skip_step","step_id":1,"reason":"why not needed"}
-{"action":"final","message":"..."}
-{"action":"browser_navigate","url":"https://example.com","timeout":30}
-{"action":"browser_click","selector":"a.link"}
-{"action":"browser_type","selector":"input#search","text":"query"}
-{"action":"browser_scroll","direction":"down","amount":500}
-{"action":"browser_snapshot"}
-{"action":"browser_screenshot","full_page":false}
-{"action":"browser_extract"}
-{"action":"browser_back"}
-{"action":"browser_close"}
-{"action":"vision_analyze","image_path":"/path/to/image.png","prompt":"Describe this image"}
-{"action":"delegate_task","task":"task description","max_steps":12,"timeout":120}
-{"action":"cron_add","name":"backup","expression":"0 3 * * *","command":"rsync -a /data /backup"}
-{"action":"cron_remove","job_id":1}
-{"action":"cron_list"}
-{"action":"cron_enable","job_id":1,"enabled":true}
-{"action":"cron_run","job_id":1,"timeout":60}
-{"action":"cron_logs","job_id":1}
-{"action":"kanban_add","title":"Fix bug","description":"The login button crashes","tags":"bug","priority":1}
-{"action":"kanban_list","status":"todo"}
-{"action":"kanban_move","card_id":1,"status":"in_progress"}
-{"action":"kanban_show","card_id":1}
-{"action":"kanban_delete","card_id":1}
-{"action":"kanban_update","card_id":1,"title":"Updated title"}
-{"action":"computer_screenshot"}
-{"action":"computer_click","x":100,"y":200,"button":"left"}
-{"action":"computer_type","text":"hello world"}
-{"action":"computer_keypress","key":"Return"}
-{"action":"computer_size"}
+Allowed actions (return exactly one action in XML):
+<action>shell</action>
+<command>command</command>
+<timeout>60</timeout>
+
+<action>shell_secure</action>
+<command>command</command>
+<timeout>15</timeout>
+
+<action>view_file</action>
+<path>relative/path</path>
+<line_start>1</line_start>
+<line_end>50</line_end>
+
+<action>verify_file</action>
+<path>script.py</path>
+
+<action>read_file</action>
+<path>relative/path</path>
+
+<action>write_file</action>
+<path>relative/path</path>
+<content>...</content>
+
+<action>edit_file</action>
+<path>relative/path</path>
+<old_str>text to replace</old_str>
+<new_str>replacement text</new_str>
+
+<action>patch_file</action>
+<path>relative/path</path>
+<old_str>text to replace</old_str>
+<new_str>replacement text</new_str>
+
+<action>append_file</action>
+<path>relative/path</path>
+<content>...</content>
+
+<action>move_file</action>
+<src>path</src>
+<dst>path</dst>
+
+<action>search_files</action>
+<query>text</query>
+
+<action>rag_query</action>
+<query>search text</query>
+<top_k>5</top_k>
+
+<action>rag_index</action>
+<path>/path/to/index</path>
+
+<action>search_web</action>
+<query>search query</query>
+<top_k>5</top_k>
+
+<action>save_experience</action>
+<task>task done</task>
+<solution>how it was solved</solution>
+<tags>["tag1"]</tags>
+
+<action>load_experience</action>
+<task>task to find</task>
+
+<action>run_skill</action>
+<skill>skill-slug</skill>
+<args>args</args>
+<timeout>30</timeout>
+
+<action>create_skill</action>
+<name>name</name>
+<summary>...</summary>
+<body>...</body>
+
+<action>remember</action>
+<note>...</note>
+
+<action>skip_step</action>
+<step_id>1</step_id>
+<reason>why not needed</reason>
+
+<action>set_tasks</action>
+<tasks>["task 1", "task 2"]</tasks>
+
+<action>task_done</action>
+<task>task 1</task>
+
+<action>final</action>
+<summary>What was requested vs what was done</summary>
+<message>...</message>
+
+<action>browser_navigate</action>
+<url>https://example.com</url>
+<timeout>30</timeout>
+
+<action>browser_click</action>
+<selector>a.link</selector>
+
+<action>browser_type</action>
+<selector>input#search</selector>
+<text>query</text>
+
+<action>browser_scroll</action>
+<direction>down</direction>
+<amount>500</amount>
+
+<action>browser_snapshot</action>
+
+<action>browser_screenshot</action>
+
+<action>browser_extract</action>
+
+<action>browser_back</action>
+
+<action>browser_close</action>
+
+<action>vision_analyze</action>
+<image_path>/path/to/image.png</image_path>
+<prompt>Describe this image</prompt>
+
+<action>delegate_task</action>
+<task>task description</task>
+<max_steps>12</max_steps>
+<timeout>120</timeout>
+
+<action>cron_add</action>
+<name>backup</name>
+<expression>0 3 * * *</expression>
+<command>rsync -a /data /backup</command>
+
+<action>cron_remove</action>
+<job_id>1</job_id>
+
+<action>cron_list</action>
+
+<action>cron_enable</action>
+<job_id>1</job_id>
+<enabled>true</enabled>
+
+<action>cron_run</action>
+<job_id>1</job_id>
+<timeout>60</timeout>
+
+<action>cron_logs</action>
+<job_id>1</job_id>
+
+<action>kanban_add</action>
+<title>Fix bug</title>
+<description>The login button crashes</description>
+<tags>bug</tags>
+<priority>1</priority>
+
+<action>kanban_list</action>
+<status>todo</status>
+
+<action>kanban_move</action>
+<card_id>1</card_id>
+<status>in_progress</status>
+
+<action>kanban_show</action>
+<card_id>1</card_id>
+
+<action>kanban_delete</action>
+<card_id>1</card_id>
+
+<action>kanban_update</action>
+<card_id>1</card_id>
+<title>Updated title</title>
+
+<action>computer_screenshot</action>
+
+<action>computer_click</action>
+<x>100</x>
+<y>200</y>
+<button>left</button>
+
+<action>computer_type</action>
+<text>hello world</text>
+
+<action>computer_keypress</action>
+<key>Return</key>
+
+<action>computer_size</action>
 """
 
 SYSTEM_PROMPT_ES = """Eres Delux, un asistente IA para administración del sistema, gestión de archivos, automatización y desarrollo.
@@ -189,6 +329,7 @@ Espacio de trabajo:
 Patrones Inteligentes:
 - ANTES de actuar: usa load_experience para ver si ya resolviste algo similar
 - ANTES de tareas complejas: descompón el problema en pasos claros
+- PARA trabajo multi-paso: usa set_tasks para crear un checklist, luego task_done al completar cada item
 - EN errores: prueba diferente. Si fallas 3+ veces, usa search_web
 - DESPUÉS de un éxito: guarda con save_experience para no tener que resolverlo de nuevo
 - ANTES de final: verifica que todo funciona y no hay cabos sueltos
@@ -203,22 +344,24 @@ PATRONES DE VERIFICACIÓN (OBLIGATORIO — usa esto DESPUÉS de crear o editar):
 
 Reglas:
 - Nunca uses sudo ni escalación de privilegios
-- Trabaja de forma autónoma. Devuelve SOLO un objeto JSON.
+- Trabaja de forma autónoma. Devuelve SOLO una acción en formato XML.
 - Los comandos se ejecutan en POSIX sh. Usa sintaxis portable (no uses fish).
 - Para modificar archivos existentes, usa SIEMPRE edit_file en lugar de echo/sed por shell. Usa write_file solo para archivos nuevos o reescrituras completas.
-- FORMATO JSON: Nunca uses saltos de línea literales ni tabulaciones dentro de un valor JSON. Usa siempre caracteres de escape como \\n y \\t.
 - REGLA DE RUTAS: Las rutas relativas se resuelven contra CURRENT_CWD. Usa rutas absolutas (que empiecen con /) para archivos fuera del CWD. Nunca uses ~ o $HOME en rutas.
 - CÓDIGO: No entregues bloques de código en la acción "final". Si necesitas crear un archivo, usa "write_file". "final" es solo para un resumen breve.
 - DISCIPLINA DE PLAN: Si recibes un banner "!!! PLAN IN PROGRESS !!!", NO puedes usar "final" hasta que todos los pasos del plan estén en SUCCESS.
 - MEMORIA Y APRENDIZAJE: ANTES de usar "final", SIEMPRE evalúa si aprendiste una nueva solución técnica, patrón o preferencia. Si es así, guárdalo usando "remember" (para datos del usuario) o "run_skill" con "delux-obsidian-brain" (para conocimiento técnico).
 - NAVEGADOR (SESIÓN): Las acciones nativas (browser_navigate, browser_click, browser_type, browser_snapshot, browser_scroll, browser_back) mantienen el navegador ABIERTO entre pasos. Úsalas para flujos multi-paso: login → navegar → extraer.
 - NAVEGADOR (ESTÁTICO): El skill `delux-browser` hace UNA acción y CIERRA el navegador. Úsalo para "dame el texto de esta URL", "captura esta página", "extrae datos de tabla". Cada llamada es independiente.
+- MOSTRAR NAVEGADOR: Añade modo headed a cualquier acción del navegador para que la ventana sea VISIBLE. Úsalo cuando el usuario diga "muéstrame", "quiero ver", "show me". Aparece la ventana para que el usuario pueda ver.
 - GUÍA: ¿Necesitas HACER CLIC → ESPERAR → ESCRIBIR en varias páginas? Usa acciones nativas. ¿Solo texto o captura de una URL? Usa run_skill delux-browser.
 
 ACCESO A SKILLS:
 - Los skills aparecen como "nombre: resumen". Es solo referencia breve.
 - ANTES de usar un skill: lee su SKILL.md completo con view_file.
-- Ejemplo: {"action":"view_file","path":"skills/delux-browser/SKILL.md"}
+- Ejemplo:
+  <action>view_file</action>
+  <path>skills/delux-browser/SKILL.md</path>
 
 GESTIÓN DE SKILLS:
 - Todos los skills viven en DELUX_HOME/skills/. Esta es la ÚNICA ubicación canónica.
@@ -227,59 +370,195 @@ GESTIÓN DE SKILLS:
 - create_skill será RECHAZADO si ya existe un skill con el mismo nombre o similar.
 
 Después de cada acción recibes un resultado:
-- Si empieza con "SUCCESS:": la acción tuvo éxito. No la repitas. Procede al SIGUIENTE paso o, si todos están completos, responde con {"action":"final","message":"resumen breve"}.
+- Si empieza con "SUCCESS:": la acción tuvo éxito. No la repitas. Procede al SIGUIENTE paso o, si todos están completos, responde con:
+  <action>final</action>
+  <summary>Lo que se pidió vs lo que se hizo</summary>
+  <message>resumen breve</message>
 - Si empieza con "ERROR:": analiza el error e intenta un enfoque DIFERENTE. NUNCA repitas el mismo comando fallido.
 
-Acciones permitidas (devuelve exactamente un objeto JSON):
-{"action":"shell","command":"comando sh","timeout":60}
-{"action":"shell_secure","command":"comando","timeout":15}
-{"action":"view_file","path":"ruta/relativa","line_start":1,"line_end":50}
-{"action":"verify_file","path":"script.py"}
-{"action":"read_file","path":"ruta/relativa"}
-{"action":"write_file","path":"ruta/relativa","content":"..."}
-{"action":"edit_file","path":"ruta/relativa","old_str":"texto a reemplazar","new_str":"texto nuevo","replace_all":false}
-{"action":"patch_file","path":"ruta/relativa","old_str":"texto a reemplazar","new_str":"texto nuevo"}
-{"action":"append_file","path":"ruta/relativa","content":"..."}
-{"action":"move_file","src":"ruta","dst":"ruta"}
-{"action":"search_files","query":"texto"}
-{"action":"rag_query","query":"texto de búsqueda","top_k":5}
-{"action":"rag_index","path":"/ruta/a/indexar"}
-{"action":"search_web","query":"consulta web","top_k":5}
-{"action":"save_experience","task":"tarea realizada","solution":"cómo se resolvió","tags":["etiqueta"]}
-{"action":"load_experience","task":"tarea a buscar"}
-{"action":"run_skill","skill":"skill-slug","args":"args","timeout":30}
-{"action":"create_skill","name":"nombre","summary":"...","body":"..."}
-{"action":"remember","note":"..."}
-{"action":"skip_step","step_id":1,"reason":"por qué no es necesario"}
-{"action":"final","message":"..."}
-{"action":"browser_navigate","url":"https://ejemplo.com","timeout":30}
-{"action":"browser_click","selector":"a.link"}
-{"action":"browser_type","selector":"input#buscar","text":"consulta"}
-{"action":"browser_scroll","direction":"down","amount":500}
-{"action":"browser_snapshot"}
-{"action":"browser_screenshot","full_page":false}
-{"action":"browser_extract"}
-{"action":"browser_back"}
-{"action":"browser_close"}
-{"action":"vision_analyze","image_path":"/ruta/a/imagen.png","prompt":"Describe esta imagen"}
-{"action":"delegate_task","task":"descripción de la tarea","max_steps":12,"timeout":120}
-{"action":"cron_add","name":"backup","expression":"0 3 * * *","command":"rsync -a /datos /backup"}
-{"action":"cron_remove","job_id":1}
-{"action":"cron_list"}
-{"action":"cron_enable","job_id":1,"enabled":true}
-{"action":"cron_run","job_id":1,"timeout":60}
-{"action":"cron_logs","job_id":1}
-{"action":"kanban_add","title":"Arreglar bug","description":"El boton de login falla","tags":"bug","priority":1}
-{"action":"kanban_list","status":"todo"}
-{"action":"kanban_move","card_id":1,"status":"in_progress"}
-{"action":"kanban_show","card_id":1}
-{"action":"kanban_delete","card_id":1}
-{"action":"kanban_update","card_id":1,"title":"Título actualizado"}
-{"action":"computer_screenshot"}
-{"action":"computer_click","x":100,"y":200,"button":"left"}
-{"action":"computer_type","text":"hola mundo"}
-{"action":"computer_keypress","key":"Return"}
-{"action":"computer_size"}
+Acciones permitidas (devuelve exactamente una acción en XML):
+<action>shell</action>
+<command>comando sh</command>
+<timeout>60</timeout>
+
+<action>shell_secure</action>
+<command>comando</command>
+<timeout>15</timeout>
+
+<action>view_file</action>
+<path>ruta/relativa</path>
+<line_start>1</line_start>
+<line_end>50</line_end>
+
+<action>verify_file</action>
+<path>script.py</path>
+
+<action>read_file</action>
+<path>ruta/relativa</path>
+
+<action>write_file</action>
+<path>ruta/relativa</path>
+<content>...</content>
+
+<action>edit_file</action>
+<path>ruta/relativa</path>
+<old_str>texto a reemplazar</old_str>
+<new_str>texto nuevo</new_str>
+
+<action>patch_file</action>
+<path>ruta/relativa</path>
+<old_str>texto a reemplazar</old_str>
+<new_str>texto nuevo</new_str>
+
+<action>append_file</action>
+<path>ruta/relativa</path>
+<content>...</content>
+
+<action>move_file</action>
+<src>ruta</src>
+<dst>ruta</dst>
+
+<action>search_files</action>
+<query>texto</query>
+
+<action>rag_query</action>
+<query>texto de búsqueda</query>
+<top_k>5</top_k>
+
+<action>rag_index</action>
+<path>/ruta/a/indexar</path>
+
+<action>search_web</action>
+<query>consulta web</query>
+<top_k>5</top_k>
+
+<action>save_experience</action>
+<task>tarea realizada</task>
+<solution>cómo se resolvió</solution>
+<tags>["etiqueta"]</tags>
+
+<action>load_experience</action>
+<task>tarea a buscar</task>
+
+<action>run_skill</action>
+<skill>skill-slug</skill>
+<args>args</args>
+<timeout>30</timeout>
+
+<action>create_skill</action>
+<name>nombre</name>
+<summary>...</summary>
+<body>...</body>
+
+<action>remember</action>
+<note>...</note>
+
+<action>skip_step</action>
+<step_id>1</step_id>
+<reason>por qué no es necesario</reason>
+
+<action>set_tasks</action>
+<tasks>["tarea 1", "tarea 2"]</tasks>
+
+<action>task_done</action>
+<task>tarea 1</task>
+
+<action>final</action>
+<summary>Lo que se pidió vs lo que se hizo</summary>
+<message>...</message>
+
+<action>browser_navigate</action>
+<url>https://ejemplo.com</url>
+<timeout>30</timeout>
+
+<action>browser_click</action>
+<selector>a.link</selector>
+
+<action>browser_type</action>
+<selector>input#buscar</selector>
+<text>consulta</text>
+
+<action>browser_scroll</action>
+<direction>down</direction>
+<amount>500</amount>
+
+<action>browser_snapshot</action>
+
+<action>browser_screenshot</action>
+
+<action>browser_extract</action>
+
+<action>browser_back</action>
+
+<action>browser_close</action>
+
+<action>vision_analyze</action>
+<image_path>/ruta/a/imagen.png</image_path>
+<prompt>Describe esta imagen</prompt>
+
+<action>delegate_task</action>
+<task>descripción de la tarea</task>
+<max_steps>12</max_steps>
+<timeout>120</timeout>
+
+<action>cron_add</action>
+<name>backup</name>
+<expression>0 3 * * *</expression>
+<command>rsync -a /datos /backup</command>
+
+<action>cron_remove</action>
+<job_id>1</job_id>
+
+<action>cron_list</action>
+
+<action>cron_enable</action>
+<job_id>1</job_id>
+<enabled>true</enabled>
+
+<action>cron_run</action>
+<job_id>1</job_id>
+<timeout>60</timeout>
+
+<action>cron_logs</action>
+<job_id>1</job_id>
+
+<action>kanban_add</action>
+<title>Arreglar bug</title>
+<description>El boton de login falla</description>
+<tags>bug</tags>
+<priority>1</priority>
+
+<action>kanban_list</action>
+<status>todo</status>
+
+<action>kanban_move</action>
+<card_id>1</card_id>
+<status>in_progress</status>
+
+<action>kanban_show</action>
+<card_id>1</card_id>
+
+<action>kanban_delete</action>
+<card_id>1</card_id>
+
+<action>kanban_update</action>
+<card_id>1</card_id>
+<title>Título actualizado</title>
+
+<action>computer_screenshot</action>
+
+<action>computer_click</action>
+<x>100</x>
+<y>200</y>
+<button>left</button>
+
+<action>computer_type</action>
+<text>hola mundo</text>
+
+<action>computer_keypress</action>
+<key>Return</key>
+
+<action>computer_size</action>
 """
 
 ERROR_REFLECTION_EN = """ERROR in the previous action: {error}
@@ -299,7 +578,6 @@ Smart recovery:
 - Permission denied → try reading instead, or checking ownership
 - Command not found → suggest package install or use built-in alternative
 - Timeout → reduce scope, use more specific command
-- JSON parse error → escape special chars, use proper JSON formatting
 
 If you are completely stuck after multiple approaches, search the web with search_web for the solution.
 Remember: Only repeat actions that returned "SUCCESS:" if they are needed again for a new purpose. Never repeat a failing command.
@@ -322,7 +600,6 @@ Recuperaci\u00f3n inteligente:
 - Permiso denegado \u2192 intenta leer en lugar de escribir, o revisa propietario
 - Comando no encontrado \u2192 sugiere instalar o usa alternativa integrada
 - Timeout \u2192 reduce el alcance, usa un comando m\u00e1s espec\u00edfico
-- Error JSON \u2192 escapa caracteres especiales, usa formato JSON correcto
 """
 
 
@@ -439,40 +716,256 @@ def build_session_context(
     return ctx or None
 
 
-def create_plan(prompt: str, config: Config, lang: str = "en") -> object | None:
+def _check_missing_files(message: str, steps: list) -> str | None:
+    """If final message claims files by extension, verify write_file/edit_file/shell was used for each."""
+    ext_pat = r'\b\w+\.(css|js|html?|tsx?|jsx|py|json|ya?ml|xml|md|txt|sh|env|conf|go|rs|vue|svelte|php)\b'
+    claimed = set()
+    for m in re.finditer(ext_pat, message.lower()):
+        claimed.add(m.group(1))
+    if not claimed:
+        return None
+
+    created = set()
+    for s in steps:
+        a = s.action
+        if a.get("action") in ("write_file", "edit_file", "patch_file"):
+            path = a.get("path", "")
+            if "." in path:
+                created.add(path.rsplit(".", 1)[-1].lower())
+        elif a.get("action") == "shell":
+            cmd = a.get("command", "")
+            for m in re.finditer(ext_pat, cmd.lower()):
+                created.add(m.group(1))
+
+    missing = claimed - created
+    if not missing:
+        return None
+    exts = ", .".join(sorted(missing))
+    return (
+        f"ERROR: Tu mensaje final menciona archivos .{exts} que no existen en el historial de acciones. "
+        f"Debes crearlos con write_file antes de finalizar."
+    )
+
+
+_TASKS_PATH = Path.home() / ".delux" / "tasks.json"
+
+
+def _load_tasks() -> list[dict] | None:
+    """Return list of {desc, done} or None."""
+    if _TASKS_PATH.is_file():
+        try:
+            return json.loads(_TASKS_PATH.read_text())
+        except (json.JSONDecodeError, ValueError):
+            _TASKS_PATH.unlink()
+            return None
+    return None
+
+
+def _save_tasks(tasks: list[dict]) -> None:
+    _TASKS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _TASKS_PATH.write_text(json.dumps(tasks, indent=2))
+
+
+def _clear_tasks() -> None:
+    if _TASKS_PATH.is_file():
+        _TASKS_PATH.unlink()
+
+
+def _tasks_to_markdown(tasks: list[dict] | None) -> str | None:
+    """Convert tasks list to markdown checkbox format for prompt injection."""
+    if not tasks:
+        return None
+    lines = ["[Active tasks]"]
+    for t in tasks:
+        status = "x" if t.get("done") else " "
+        lines.append(f"- [{status}] {t.get('desc', '?')}")
+    lines.append("[End tasks]")
+    return "\n".join(lines)
+
+
+def _check_tasks_done() -> str | None:
+    """Return error string if any task is not done, else None."""
+    tasks = _load_tasks()
+    if not tasks:
+        return None
+    pending = [t for t in tasks if not t.get("done")]
+    if not pending:
+        return None
+    lines = ["- [ ] " + t.get("desc", "?") for t in pending]
+    return (
+        "ERROR: You have incomplete tasks:\n"
+        + "\n".join(lines)
+        + "\n\nUse task_done to mark them complete before calling final."
+    )
+
+
+def _try_xml_plan(text: str) -> dict | None:
+    """Extract plan data from XML format: <plan><summary>...</summary><step>...</step></plan>"""
+    import re
+    text = re.sub(r"^```(?:xml)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    summary_m = re.search(r"<summary>([\s\S]*?)</summary>", text)
+    steps = re.findall(
+        r"<step[^>]*>\s*<description>([\s\S]*?)</description>(?:\s*<detail>([\s\S]*?)</detail>)?\s*</step>",
+        text,
+    )
+    questions = re.findall(
+        r"<question>\s*<text>([\s\S]*?)</text>\s*<options>(.*?)</options>\s*</question>",
+        text,
+        re.DOTALL,
+    )
+    if summary_m:
+        opts_list = []
+        for qtext, qopts in questions:
+            opts = re.findall(r"<option>([^<]*)</option>", qopts)
+            opts_list.append({"text": qtext.strip(), "options": opts})
+        if opts_list:
+            return {"questions": opts_list}
+        step_list = []
+        for desc, detail in steps:
+            step_list.append({"description": desc.strip(), "detail": detail.strip() if detail else ""})
+        if step_list:
+            return {"summary": summary_m.group(1).strip(), "steps": step_list}
+    return None
+
+
+def _try_text_plan(text: str) -> dict | None:
+    """Parse a plain-text plan when XML parsing fails.
+    Handles numbered lists, bullet lists, action-prefixed lines, 'Step N:' format,
+    and inline "Create file.ext description Create file2.ext description" format."""
+    import re
+    primary = r'(?:Run|Read|Search|Create|Install|Build|Deploy|Test|Verify|List|Show|Open|Navigate|Analyze|Review|Fix|Update|Remove|Delete|Add|Copy|Move|Execute)'
+
+    # Strategy 1: split by 'Step N:' pattern
+    parts = re.split(r'Step\s+\d+\s*:\s*', text.strip())
+    if len(parts) > 2:
+        steps = []
+        for part in parts[1:]:
+            part = part.strip().rstrip(".").strip()
+            if part:
+                steps.append({"description": part, "detail": ""})
+        if steps:
+            summary = steps[0]["description"][:100]
+            return {"summary": summary, "steps": steps}
+
+    # Strategy 2: split at position before action+filename.ext mid-line
+    # Handles "Create index.html ...Create style.css ...Create script.js" (no periods)
+    parts = re.split(r'(?<=\s)(?=' + primary + r'\s+\S*\.\w{2,4}\s)', text.strip())
+    if len(parts) > 1:
+        steps = []
+        for part in parts:
+            part = part.strip()
+            if part:
+                steps.append({"description": part, "detail": ""})
+        if steps:
+            summary = steps[0]["description"][:100]
+            return {"summary": summary, "steps": steps}
+
+    # Strategy 3: split by period + action word (handles "Create X. Create Y.")
+    parts = re.split(rf'\.\s+(?={primary}\s)', text.strip())
+    if len(parts) > 1:
+        steps = []
+        for part in parts:
+            part = part.strip().rstrip(".")
+            if part:
+                steps.append({"description": part, "detail": ""})
+        if steps:
+            summary = steps[0]["description"][:100]
+            return {"summary": summary, "steps": steps}
+
+    # Strategy 4: split by newlines with numbered/bullet/action-prefix
+    steps = []
+    for line in text.strip().split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        if re.match(r'^\d+[.)]\s+(.+)$', line):
+            steps.append({"description": re.match(r'^\d+[.)]\s+(.+)$', line).group(1).strip(), "detail": ""})
+        elif re.match(r'^[-*]\s+(.+)$', line):
+            steps.append({"description": re.match(r'^[-*]\s+(.+)$', line).group(1).strip(), "detail": ""})
+        elif re.match(rf'^({primary})\s*:\s*(.+)$', line, re.IGNORECASE):
+            m = re.match(rf'^({primary})\s*:\s*(.+)$', line, re.IGNORECASE)
+            steps.append({"description": f"{m.group(1)}: {m.group(2).strip()}", "detail": ""})
+        elif re.match(rf'^{primary}\s', line, re.IGNORECASE):
+            steps.append({"description": line, "detail": ""})
+    if steps:
+        summary = steps[0]["description"][:100]
+        return {"summary": summary, "steps": steps}
+    return None
+
+
+def create_plan(prompt: str, config: Config, lang: str = "en", cwd: str = "") -> object | None:
     from .plan_executor import build_planner_prompt, AgentPlan, PlanStepStatus
-    from .llm import chat_completion
+    from .llm import chat_completion, LLMError
     import json as _json
+    import re
 
     plan_model = config.effective_plan_model
     plan_base = config.effective_plan_api_base
     plan_key = config.effective_plan_api_key
     plan_ep = config.effective_plan_api_endpoint
 
-    planner_prompt = build_planner_prompt(prompt=prompt, lang=lang)
+    sys_context = f"Current directory: {cwd or config.cwd or '.'}\nProject root: {config.root}"
+    planner_prompt = build_planner_prompt(prompt=prompt, system_context=sys_context, lang=lang)
+
+    text = ""
     try:
         plan_response = chat_completion(
             plan_base, plan_key, plan_model,
-            [{"role": "user", "content": planner_prompt}],
-            plan_ep, timeout=60,
+            [
+                {"role": "system", "content": "You ONLY output XML. Never add text before or after the XML. No markdown. No code fences. Just raw XML."},
+                {"role": "user", "content": planner_prompt},
+            ],
+            plan_ep, timeout=30,
         )
-        data = _json.loads(plan_response.text.strip())
+        text = plan_response.text.strip()
+        data = _try_xml_plan(text) or _try_json_plan(text) or _try_text_plan(text)
+    except LLMError as e:
+        import sys
+        print(f"[plan] API error ({plan_model}): {e}", file=sys.stderr)
+        return None
+    except Exception as e:
+        import sys
+        print(f"[plan] Unexpected error: {e}", file=sys.stderr)
+        return None
+
+    if data and "questions" in data:
+        import sys
+        print(f"[plan] Model asked questions instead of creating plan", file=sys.stderr)
+        return None
+
+    if data and data.get("steps"):
+        summary = data.get("summary", "")
+        raw_steps = data.get("steps", [])
+        step_list = []
+        for i, s in enumerate(raw_steps, 1):
+            desc = s.get("description", f"Step {i}")
+            detail = s.get("detail", "")
+            step_list.append(PlanStepStatus(id=i, description=desc, detail=detail))
+        plan = AgentPlan(prompt=prompt, steps=step_list, summary=summary)
+        import sys
+        print(f"[plan] Created: {summary} ({len(step_list)} steps)", file=sys.stderr)
+        return plan
+
+    import sys
+    print(f"[plan] Parse failed. Raw: {text[:200] if text else 'empty'}", file=sys.stderr)
+    return None
+
+
+def _try_json_plan(text: str) -> dict | None:
+    """Fallback JSON plan parser."""
+    import json as _json
+    import re
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
+    json_start = text.find("{")
+    json_end = text.rfind("}")
+    if json_start >= 0 and json_end > json_start:
+        text = text[json_start:json_end + 1]
+    try:
+        return _json.loads(text)
     except Exception:
         return None
-
-    if "questions" in data:
-        return None
-    summary = data.get("summary", "")
-    raw_steps = data.get("steps", [])
-    if not raw_steps:
-        return None
-
-    step_list = []
-    for i, s in enumerate(raw_steps, 1):
-        desc = s.get("description", f"Step {i}")
-        detail = s.get("detail", "")
-        step_list.append(PlanStepStatus(id=i, description=desc, detail=detail))
-    return AgentPlan(prompt=prompt, steps=step_list, summary=summary)
 
 
 def prepare_agent(
@@ -514,7 +1007,7 @@ def prepare_agent(
 
     plan_obj = None
     if plan_mode:
-        plan_obj = create_plan(prompt, run_config, lang)
+        plan_obj = create_plan(prompt, run_config, lang, cwd=str(cwd))
 
     return Agent(
         config=run_config, cwd=cwd,
@@ -558,6 +1051,8 @@ class Agent:
         return self.run_with_result(prompt, max_steps=max_steps, verbose=verbose).answer
 
     def run_with_result(self, prompt: str, max_steps: int | None = None, verbose: bool = True, confirm_action: Callable[[dict], bool] | None = None, session_context: list[dict] | None = None) -> AgentRunResult:
+        from .browser import set_headless_mode
+        set_headless_mode(self.config.browser_headless)
         self.transcript = []
         steps: list[AgentStep] = []
         if max_steps is None:
@@ -688,6 +1183,21 @@ class Agent:
             elif plan_exec.in_progress and not plan_exec.plan_complete:
                 pass  # executor says in_progress but no more steps → will finalize
 
+            # ── Inject current tasks (replace if already present) ──
+            tasks_content = _tasks_to_markdown(_load_tasks())
+            if tasks_content:
+                # Find and replace existing task message, or append new one
+                task_idx = None
+                for i in range(len(messages) - 1, -1, -1):
+                    if messages[i].get("role") == "user" and isinstance(messages[i].get("content"), str) and messages[i]["content"].startswith("[Active tasks]"):
+                        task_idx = i
+                        break
+                task_msg = {"role": "user", "content": tasks_content}
+                if task_idx is not None:
+                    messages[task_idx] = task_msg
+                else:
+                    messages.append(task_msg)
+
             try:
                 response = chat_completion(
                     self.config.api_base,
@@ -705,19 +1215,19 @@ class Agent:
             if verbose:
                 print(f"[{step_num}] {action.get('action', 'invalid')}")
 
-            # Smart JSON retry: if plain text, correct with example
+            # Smart format retry: if plain text, correct with example
             if action.get("_plain_text"):
                 _format_retries = 0
                 raw_text = response.text
                 while action.get("_plain_text") and _format_retries < 2:
                     last_action = steps[-1].action if steps else None
-                    example = '{"action":"shell","command":"ls -la","timeout":60}'
+                    example = "<action>shell</action>\n<command>ls -la</command>\n<timeout>60</timeout>"
                     if last_action:
-                        example = json.dumps(last_action, ensure_ascii=False)
+                        example = action_to_xml(last_action)
                     fix_msg = (
-                        "Your last response was not valid JSON. "
-                        "Reply with ONLY a single JSON object — no markdown, no extra text.\n"
-                        f"Example: {example}\n"
+                        "Your last response was not valid XML action format. "
+                        "Reply with ONLY an action using XML tags — no markdown, no extra text.\n"
+                        f"Example:\n{example}\n"
                         f"Your previous response was:\n{raw_text[:400]}"
                     )
                     try:
@@ -759,15 +1269,81 @@ class Agent:
 
                 # Continue to next step
                 consecutive_errors = 0
-                messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+                messages.append({"role": "assistant", "content": action_to_xml(action)})
                 messages.append({"role": "user", "content": "Step skipped. Proceed to the next step."})
+                continue
+
+            # ── Handle task actions ──
+            if action.get("action") == "set_tasks":
+                raw = action.get("tasks", "")
+                if isinstance(raw, str):
+                    try:
+                        descs = json.loads(raw) if raw.strip() else []
+                    except (json.JSONDecodeError, ValueError):
+                        descs = [raw]
+                elif isinstance(raw, list):
+                    descs = [str(d) for d in raw]
+                else:
+                    descs = []
+                if not descs:
+                    result = "ERROR: set_tasks needs a JSON array in <tasks> tag"
+                else:
+                    saved = [{"desc": d, "done": False} for d in descs]
+                    _save_tasks(saved)
+                    self._emit("tasks_updated", tasks=saved)
+                    result = f"SUCCESS: Created {len(descs)} tasks."
+                self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
+                self.transcript.append(AgentEvent("tool", result))
+                steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
+                self._emit("action_finished", step=step_num, action=action, result=result, plan_step=plan_step_id)
+                consecutive_errors = 0
+                messages.append({"role": "assistant", "content": action_to_xml(action)})
+                messages.append({"role": "user", "content": result})
+                continue
+
+            if action.get("action") == "task_done":
+                desc = action.get("task", "")
+                if not desc:
+                    result = "ERROR: task_done needs a <task> tag"
+                else:
+                    tasks = _load_tasks()
+                    if not tasks:
+                        result = "ERROR: No active tasks. Use set_tasks first."
+                    else:
+                        found = False
+                        for t in tasks:
+                            if not t.get("done") and desc.lower() in t.get("desc", "").lower():
+                                t["done"] = True
+                                found = True
+                                break
+                        if not found:
+                            # Try matching against all tasks (including already done)
+                            for t in tasks:
+                                if desc.lower() in t.get("desc", "").lower():
+                                    t["done"] = True
+                                    found = True
+                                    break
+                        if found:
+                            _save_tasks(tasks)
+                            self._emit("tasks_updated", tasks=tasks)
+                            pending = sum(1 for t in tasks if not t.get("done"))
+                            result = f"SUCCESS: Task '{desc}' completed. {pending} task(s) remaining."
+                        else:
+                            result = f"ERROR: No task matches '{desc}'. Active tasks: {[t['desc'] for t in tasks]}"
+                self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
+                self.transcript.append(AgentEvent("tool", result))
+                steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
+                self._emit("action_finished", step=step_num, action=action, result=result, plan_step=plan_step_id)
+                consecutive_errors = 0
+                messages.append({"role": "assistant", "content": action_to_xml(action)})
+                messages.append({"role": "user", "content": result})
                 continue
 
             # Block final if plan is in progress and not complete
             if action.get("action") == "final" and plan_exec.in_progress and not plan_exec.plan_complete:
                 block_msg = f"You tried to finalize, but the plan is not complete. {plan_exec.progress_str()} done. Return to the current step."
                 self._emit("plan_final_blocked", step_id=plan_step_id)
-                messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+                messages.append({"role": "assistant", "content": action_to_xml(action)})
                 messages.append({"role": "user", "content": block_msg})
                 steps.append(AgentStep(number=step_num, action=action, result=f"BLOCKED: {block_msg}", plan_step_id=plan_step_id))
                 consecutive_errors = 0
@@ -791,19 +1367,19 @@ class Agent:
             if confirm_action and not confirm_action(action):
                 result = "ERROR: User denied this action. Try another approach or skip."
                 is_error = True
-                self.transcript.append(AgentEvent("assistant", json.dumps(action, ensure_ascii=False)))
+                self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
                 self.transcript.append(AgentEvent("tool", result))
                 steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
                 self._emit("action_finished", step=step_num, action=action, result=result, plan_step=plan_step_id)
                 consecutive_errors += 1
-                messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+                messages.append({"role": "assistant", "content": action_to_xml(action)})
                 messages.append({"role": "user", "content": result})
                 continue
 
             result = self._dispatch(action, step_number=step_num)
             is_error = result.startswith("ERROR:")
 
-            self.transcript.append(AgentEvent("assistant", json.dumps(action, ensure_ascii=False)))
+            self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
             self.transcript.append(AgentEvent("tool", result))
             steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
             self._emit("action_finished", step=step_num, action=action, result=result, plan_step=plan_step_id)
@@ -815,13 +1391,48 @@ class Agent:
 
                 # Check if plan is complete after this step
                 if plan_exec.plan_complete:
+                    _clear_tasks()
+                    self._emit("tasks_updated", tasks=[])
                     summary = plan_exec.finalize_summary()
                     self._emit("plan_completed", summary=summary)
                     final_msg = {"action": "final", "message": summary}
                     self._emit("final_answer", step=step_num, action=final_msg, answer=summary)
                     return AgentRunResult(answer=summary, steps=steps, transcript=list(self.transcript))
 
+            # ── Reject final if it claims files that were never created ──
             if action.get("action") == "final":
+                final_msg = action.get("message", "") or ""
+                final_summary = action.get("summary", "") or ""
+                combined = f"{final_msg} {final_summary}"
+                if combined:
+                    err = _check_missing_files(combined, steps)
+                    if err:
+                        result = err
+                        is_error = True
+                        self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
+                        self.transcript.append(AgentEvent("tool", result))
+                        steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
+                        consecutive_errors += 1
+                        messages.append({"role": "assistant", "content": action_to_xml(action)})
+                        messages.append({"role": "user", "content": result})
+                        continue
+
+                # ── Check for incomplete tasks ──
+                err = _check_tasks_done()
+                if err:
+                    result = err
+                    is_error = True
+                    self.transcript.append(AgentEvent("assistant", action_to_xml(action)))
+                    self.transcript.append(AgentEvent("tool", result))
+                    steps.append(AgentStep(number=step_num, action=action, result=result, plan_step_id=plan_step_id))
+                    consecutive_errors += 1
+                    messages.append({"role": "assistant", "content": action_to_xml(action)})
+                    messages.append({"role": "user", "content": result})
+                    continue
+
+            if action.get("action") == "final":
+                _clear_tasks()
+                self._emit("tasks_updated", tasks=[])
                 self._emit("final_answer", step=step_num, action=action, answer=str(action.get("message", "")).strip())
                 return AgentRunResult(
                     answer=str(action.get("message", "")).strip(),
@@ -860,11 +1471,11 @@ class Agent:
                     messages = [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": base_context + "\n\n" + prompt},
-                        {"role": "assistant", "content": json.dumps(action, ensure_ascii=False)},
+                        {"role": "assistant", "content": action_to_xml(action)},
                         {"role": "user", "content": "Tool result:\n" + result},
                     ]
                 else:
-                    messages.append({"role": "assistant", "content": json.dumps(action, ensure_ascii=False)})
+                    messages.append({"role": "assistant", "content": action_to_xml(action)})
                     messages.append({"role": "user", "content": "Tool result:\n" + result})
 
         # Max steps reached — if plan still in progress, force complete
@@ -971,8 +1582,13 @@ Estrategias de recuperaci\u00f3n:
 - Si fall\u00f3 edit_file: primero lee el archivo para ver su contenido actual exacto
 - Si fall\u00f3 un skill: el skill podr\u00eda no estar instalado, usa un enfoque manual
 
-Responde SOLO con tu diagn\u00f3stico y la siguiente acci\u00f3n a intentar, en formato JSON:
-{"diagnosis": "...", "next_action": {"action": "...", ...}}"""
+Responde SOLO con tu diagn\u00f3stico y la siguiente acci\u00f3n a intentar, en formato XML:
+<diagnosis>explicaci\u00f3n del problema</diagnosis>
+<next_action>
+<action>shell</action>
+<command>comando alternativo</command>
+<timeout>60</timeout>
+</next_action>"""
         else:
             diag_prompt = """The last 3 actions failed consecutively.
 Analyze the action history and results to diagnose the problem.
@@ -983,8 +1599,13 @@ Recovery strategies:
 - If edit_file failed: read the file first to see exact current content
 - If skill failed: the skill may not be installed, use a manual approach instead
 
-Respond ONLY with your diagnosis and the next action to try, in JSON format:
-{"diagnosis": "...", "next_action": {"action": "...", ...}}"""
+Respond ONLY with your diagnosis and the next action to try, in XML format:
+<diagnosis>explanation of problem</diagnosis>
+<next_action>
+<action>shell</action>
+<command>alternative command</command>
+<timeout>60</timeout>
+</next_action>"""
 
         try:
             response = chat_completion(
@@ -1212,22 +1833,24 @@ Respond ONLY with your diagnosis and the next action to try, in JSON format:
             result = browser_navigate(
                 str(action.get("url", "")),
                 int(action.get("timeout", 30)),
+                headed=bool(action.get("headed", False)),
             )
         elif kind == "browser_click":
-            result = browser_click(str(action.get("selector", "")))
+            result = browser_click(str(action.get("selector", "")), headed=bool(action.get("headed", False)))
         elif kind == "browser_type":
-            result = browser_type(str(action.get("selector", "")), str(action.get("text", "")))
+            result = browser_type(str(action.get("selector", "")), str(action.get("text", "")), headed=bool(action.get("headed", False)))
         elif kind == "browser_scroll":
             result = browser_scroll(
                 str(action.get("direction", "down")),
                 int(action.get("amount", 500)),
+                headed=bool(action.get("headed", False)),
             )
         elif kind == "browser_snapshot":
-            result = browser_snapshot()
+            result = browser_snapshot(headed=bool(action.get("headed", False)))
         elif kind == "browser_screenshot":
-            result = browser_screenshot(full_page=bool(action.get("full_page", False)))
+            result = browser_screenshot(full_page=bool(action.get("full_page", False)), headed=bool(action.get("headed", False)))
         elif kind == "browser_extract":
-            result = browser_extract()
+            result = browser_extract(headed=bool(action.get("headed", False)))
         elif kind == "browser_back":
             result = browser_back()
         elif kind == "browser_close":

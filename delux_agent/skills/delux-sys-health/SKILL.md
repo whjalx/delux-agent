@@ -21,8 +21,11 @@ Run without arguments: `delux-sys-health`
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-sys-health","args":"","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-sys-health</skill>
+<args></args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns result
@@ -41,9 +44,17 @@ eth0             UP             192.168.1.100/24
 ```
 --- delux-sys-health example ---
 USER: "check system health before the deployment"
-AGENT: {"action":"run_skill","skill":"delux-sys-health","args":"","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-sys-health</skill>
+<args></args>
+<timeout>15</timeout>
 RESULT: CPU load 0.45, Memory 53% used, Disk 34.8% used
-NEXT ACTION: {"action":"run_skill","skill":"delux-net-check","args":"","timeout":30}
+NEXT ACTION:
+<action>run_skill</action>
+<skill>delux-net-check</skill>
+<args></args>
+<timeout>30</timeout>
 ```
 
 ## Caveats

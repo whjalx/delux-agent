@@ -272,6 +272,7 @@ class GatewaySession:
     active_model_idx: int = 0
     validator_model_idx: int | None = None
     lang: str = "en"
+    max_steps: int = 12
 
     def add_turn(self, user: str, assistant: str) -> None:
         self.history.append({"user": user, "assistant": assistant})
@@ -295,39 +296,40 @@ def get_session(chat_id: str) -> GatewaySession:
 def _fmt_action(action: dict) -> str:
     kind = action.get("action", "")
     if kind == "shell":
-        cmd = str(action.get("command", ""))[:200]
-        return f'\u26a1 <code>{escape_html(cmd)}</code>'
+        cmd = str(action.get("command", ""))[:300]
+        return f'<code>$ {escape_html(cmd)}</code>'
+    elif kind == "shell_secure":
+        cmd = str(action.get("command", ""))[:300]
+        return f'<code>$ {escape_html(cmd)}</code> <i>(safe)</i>'
     elif kind == "write_file":
         path = str(action.get("path", ""))
         content = str(action.get("content", ""))
         lines = content.count("\n") + 1 if content else 0
-        return f'\U0001f4dd <code>{escape_html(path)}</code> ({lines} lines)'
+        return f'\U0001f4dd <code>{escape_html(path)}</code> <i>({lines} lines)</i>'
     elif kind == "edit_file":
         path = str(action.get("path", ""))
         old = str(action.get("old_str", ""))
         new = str(action.get("new_str", ""))
         delta = new.count("\n") - old.count("\n")
         sign = "+" if delta >= 0 else ""
-        return f'\u270f\ufe0f edit <code>{escape_html(path)}</code> ({sign}{delta} lines)'
+        return f'\u270f\ufe0f edit <code>{escape_html(path)}</code> <i>({sign}{delta} lines)</i>'
     elif kind == "patch_file":
         path = str(action.get("path", ""))
         return f'\u270f\ufe0f patch <code>{escape_html(path)}</code>'
     elif kind in ("read_file", "view_file"):
-        path = str(action.get("path", ""))
-        return f'\U0001f4d6 <code>{escape_html(path)}</code>'
+        return f'\U0001f4d6 <code>{escape_html(str(action.get("path", "")))}</code>'
     elif kind == "verify_file":
-        path = str(action.get("path", ""))
-        return f'\U0001f50d verify <code>{escape_html(path)}</code>'
+        return f'\U0001f50d verify <code>{escape_html(str(action.get("path", "")))}</code>'
     elif kind == "append_file":
-        path = str(action.get("path", ""))
-        return f'\U0001f4dd append <code>{escape_html(path)}</code>'
+        return f'\U0001f4dd append <code>{escape_html(str(action.get("path", "")))}</code>'
     elif kind == "move_file":
         src = str(action.get("src", ""))
         dst = str(action.get("dst", ""))
         return f'\U0001f4c2 mv <code>{escape_html(src)}</code> \u2192 <code>{escape_html(dst)}</code>'
     elif kind == "search_files":
-        q = str(action.get("query", ""))[:100]
-        return f'\U0001f50d search <code>{escape_html(q)}</code>'
+        return f'\U0001f50d search <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
+    elif kind == "search_web":
+        return f'\U0001f30d web <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
     elif kind == "run_skill":
         skill = str(action.get("skill", ""))
         args = str(action.get("args", ""))[:80]
@@ -336,17 +338,11 @@ def _fmt_action(action: dict) -> str:
             s += f' <code>{escape_html(args)}</code>'
         return s
     elif kind == "create_skill":
-        name = str(action.get("name", ""))
-        return f'\U0001f4a1 new skill <code>{escape_html(name)}</code>'
-    elif kind == "search_web":
-        q = str(action.get("query", ""))[:100]
-        return f'\U0001f310 search: <code>{escape_html(q)}</code>'
+        return f'\U0001f4a1 new skill <code>{escape_html(str(action.get("name", "")))}</code>'
     elif kind == "rag_query":
-        q = str(action.get("query", ""))[:100]
-        return f'\U0001f50e RAG: <code>{escape_html(q)}</code>'
+        return f'\U0001f50e RAG <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
     elif kind == "rag_index":
-        p = str(action.get("path", ""))
-        return f'\U0001f4da index <code>{escape_html(p)}</code>'
+        return f'\U0001f4da index <code>{escape_html(str(action.get("path", "")))}</code>'
     elif kind == "save_experience":
         return '\U0001f4be saved experience'
     elif kind == "remember":
@@ -355,12 +351,19 @@ def _fmt_action(action: dict) -> str:
         server = str(action.get("server", ""))
         tool = str(action.get("tool", ""))
         return f'\U0001f916 MCP {escape_html(server)}.{escape_html(tool)}'
+    elif kind == "set_tasks":
+        raw = action.get("tasks", "")
+        if isinstance(raw, list):
+            n = len(raw)
+        else:
+            n = raw.count(",") + 1 if raw else 0
+        return f'\U0001f4cb set {n} tasks'
+    elif kind == "task_done":
+        desc = str(action.get("task", ""))[:80]
+        return f'\u2705 done <code>{escape_html(desc)}</code>'
     elif kind == "final":
-        msg = str(action.get("message", ""))[:300]
+        msg = str(action.get("message", ""))[:200]
         return f'\u2705 {escape_html(msg)}'
-    elif kind == "shell_secure":
-        cmd = str(action.get("command", ""))[:200]
-        return f'\u26a1 <code>{escape_html(cmd)}</code> (safe)'
     elif kind == "skip_step":
         sid = action.get("step_id", "")
         reason = str(action.get("reason", ""))[:100]
@@ -375,21 +378,25 @@ def _fmt_result(result: str, max_len: int = 400) -> str:
     if result.startswith("SUCCESS:"):
         detail = result[8:].strip()
         if detail:
-            return f'<code>{escape_html(truncate(detail, max_len))}</code>'
-        return ''
+            return f'\u2705 <code>{escape_html(truncate(detail, max_len))}</code>'
+        return '\u2705'
     if result.startswith("ERROR:"):
         detail = result[6:].strip()
-        return f'<b>\u274c</b> <code>{escape_html(truncate(detail, max_len))}</code>'
-    return f'<code>{escape_html(truncate(result, max_len))}</code>'
+        return f'\u274c <code>{escape_html(truncate(detail, max_len))}</code>'
+    if result.startswith("BLOCKED:"):
+        detail = result[8:].strip()
+        return f'\U0001f6ab <code>{escape_html(truncate(detail, max_len))}</code>'
+    return f'\U0001f4ac <code>{escape_html(truncate(result, max_len))}</code>'
 
 
 # ── Event Handler ──
 
 class GatewayEventHandler:
-    def __init__(self, token: str, chat_id: str, session: GatewaySession):
+    def __init__(self, token: str, chat_id: str, session: GatewaySession, model_name: str = ""):
         self.token = token
         self.chat_id = chat_id
         self.session = session
+        self.model_name = model_name or "delux"
         self._step = 0
         self._cancel_flag: threading.Event | None = None
 
@@ -409,6 +416,7 @@ class GatewayEventHandler:
         self._contextualizing: bool = False
         self._start_time: float = 0.0
         self._has_plan: bool = False
+        self._tasks: list[dict] = []
 
     def set_cancel_flag(self, ev: threading.Event) -> None:
         self._cancel_flag = ev
@@ -427,23 +435,12 @@ class GatewayEventHandler:
     def _build_report(self) -> str:
         parts = []
         total_len = 0
-
-        # ── Header ──
-        header = f"<b>\U0001f680 Task</b>: <code>{escape_html(self._task_prompt[:200])}</code>"
         elapsed = time.time() - self._start_time
-        header += f"\n<i>{fmt_time(elapsed)}</i>"
-        parts.append(header)
-        total_len += len(header)
+        time_str = fmt_time(elapsed)
 
-        # ── Contextualizing ──
-        if self._contextualizing:
-            ctx_line = "\U0001f9e0 Optimizing context..."
-            parts.append(ctx_line)
-            total_len += len(ctx_line)
-
-        # ── Plan ──
+        # ── Plan section (only if plan exists) ──
         if self._has_plan:
-            plan_lines = [""]
+            plan_lines = []
             if self._plan_summary:
                 plan_lines.append(f"\U0001f4cb <b>Plan</b>: {escape_html(self._plan_summary)}")
             if self._plan_steps:
@@ -456,74 +453,103 @@ class GatewayEventHandler:
             parts.append(plan_text)
             total_len += len(plan_text)
 
-        # ── Completed actions (last 5, then trim if over limit) ──
-        keeps_actions = list(zip(self._actions, self._action_results))
+        # ── Tasks section ──
+        if self._tasks:
+            task_lines = []
+            for t in self._tasks:
+                desc = escape_html(t.get("desc", "?"))
+                done = t.get("done", False)
+                icon = "\u2705" if done else "\u2b1c"
+                task_lines.append(f"  {icon} {desc}")
+            task_text = "\n".join(task_lines)
+            parts.append(task_text)
+            total_len += len(task_text)
 
-        # Remove action details if over limit (start with oldest)
+        # ── Completed actions ──
+        keeps_actions = list(zip(self._actions, self._action_results))
         for _ in range(len(keeps_actions)):
-            actions_html_parts = [""]
-            for act, res in keeps_actions:
-                line = _fmt_action(act)
-                actions_html_parts.append(line)
+            action_parts = []
+            for i, (act, res) in enumerate(keeps_actions):
+                step_num = i + 1
+                action_parts.append(f"\u2500\u2500 {step_num} \u2500\u2500")
+                action_parts.append(_fmt_action(act))
                 if res:
-                    fmt = _fmt_result(res, 200)
+                    fmt = _fmt_result(res, 180)
                     if fmt:
-                        actions_html_parts.append(f"  {fmt}")
-            actions_text = "\n".join(actions_html_parts)
+                        action_parts.append(f"  {fmt}")
+            actions_text = "\n".join(action_parts)
             if total_len + len(actions_text) <= MAX_REPORT_LENGTH:
                 parts.append(actions_text)
                 total_len += len(actions_text)
                 break
-            keeps_actions.pop(0)  # drop oldest
+            keeps_actions.pop(0)
 
         # ── Current action ──
         if self._current_action:
-            curr_parts = [""]
-            curr_parts.append(f"\u2501\u2501\u2501 Step {self._step} \u2501\u2501\u2501")
-            act_line = _fmt_action(self._current_action)
-            curr_parts.append(act_line)
-            # Diff preview for file edits
+            curr_parts = []
+            step_label = f"\u2500\u2500 {self._step} (current) \u2500\u2500"
+            curr_parts.append(step_label)
+            curr_parts.append(_fmt_action(self._current_action))
+            # Diff preview
             if self._current_diff:
-                diff_html_lines = []
+                diff_lines = []
                 for prefix, line in self._current_diff:
                     if prefix == "+":
-                        diff_html_lines.append(f'<code>+ {escape_html(line)}</code>')
+                        diff_lines.append(f'<code>+ {escape_html(line)}</code>')
                     elif prefix == "-":
-                        diff_html_lines.append(f'<code>- {escape_html(line)}</code>')
+                        diff_lines.append(f'<code>- {escape_html(line)}</code>')
                     elif prefix == "@":
-                        diff_html_lines.append(f'<code>{escape_html(line)}</code>')
+                        diff_lines.append(f'<code>  {escape_html(line)}</code>')
                     elif prefix == " ":
-                        diff_html_lines.append(f'<code>  {escape_html(line)}</code>')
+                        diff_lines.append(f'<code>  {escape_html(line)}</code>')
                     elif prefix == "...":
-                        diff_html_lines.append(f'<i>{escape_html(line)}</i>')
-                curr_parts.append("\n".join(diff_html_lines))
-            # Shell output (last ~500 chars)
+                        diff_lines.append(f'<i>  {escape_html(line)}</i>')
+                curr_parts.append("\n".join(diff_lines))
+            # Shell output
             if self._shell_buffer:
                 shell = self._shell_buffer
                 if self._shell_truncated:
                     shell = f"... ({fmt_bytes(len(self._shell_buffer))} total)\n" + shell[-600:]
-                curr_parts.append(f"<pre>{escape_html(truncate(shell, 1000))}</pre>")
+                curr_parts.append(f"<pre>{escape_html(truncate(shell, 800))}</pre>")
             # Action result
             if self._current_action_result:
-                fmt = _fmt_result(self._current_action_result, 300)
+                fmt = _fmt_result(self._current_action_result, 250)
                 if fmt:
                     curr_parts.append(f"  {fmt}")
             curr_text = "\n".join(curr_parts)
             parts.append(curr_text)
             total_len += len(curr_text)
 
+        # ── Contextualizing hint ──
+        if self._contextualizing:
+            ctx_line = "\U0001f9e0 Optimizing context..."
+            if total_len + len(ctx_line) <= MAX_REPORT_LENGTH:
+                parts.append(ctx_line)
+                total_len += len(ctx_line)
+
         # ── Final answer ──
         if self._final_answer:
-            final_block = [""]
-            final_block.append(f"<b>\u2728 Result</b>:")
+            final_block = []
+            final_block.append(f"\n<b>\u2728 Result</b>:")
             final_block.append(f"{escape_html(truncate(self._final_answer, 1500))}")
             final_text = "\n".join(final_block)
             if total_len + len(final_text) <= MAX_REPORT_LENGTH:
                 parts.append(final_text)
             else:
                 parts.append(f"\n<b>\u2728 Result</b>: <i>(truncated)</i>")
-                final_short = escape_html(self._final_answer[:200])
-                parts.append(final_short)
+                parts.append(escape_html(self._final_answer[:200]))
+
+        # ── Footer ──
+        total_steps = len(self._actions) + (1 if self._current_action else 0)
+        footer = (
+            f"\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
+            f"<i>{escape_html(self.model_name)}</i>"
+        )
+        if total_steps:
+            footer += f"  \u00b7  {total_steps} step{'s' if total_steps != 1 else ''}"
+        footer += f"  \u00b7  {time_str}"
+        if total_len + len(footer) <= MAX_REPORT_LENGTH:
+            parts.append(footer)
 
         return "\n".join(parts)
 
@@ -531,6 +557,11 @@ class GatewayEventHandler:
         if not self._report_msg_id:
             return
         html = self._build_report()
+        # Auto-show Cancel button during execution (if no explicit keyboard)
+        if reply_markup is None and self._current_action and not self._final_answer:
+            reply_markup = build_inline_keyboard([
+                [("\u274c Cancel", "cancel")],
+            ])
         try:
             edit_html(self.token, self.chat_id, self._report_msg_id, html, reply_markup=reply_markup)
         except Exception:
@@ -679,6 +710,10 @@ class GatewayEventHandler:
             self._contextualizing = False
             self._refresh()
 
+        elif event == "tasks_updated":
+            self._tasks = payload.get("tasks", [])
+            self._refresh()
+
 
 # ── Command Dispatch ──
 
@@ -712,6 +747,10 @@ COMMANDS: dict[str, tuple[str, str]] = {
     "/history": ("history", "Show recent prompts"),
     "/validate": ("validate", "Toggle validation [on|off|once]"),
     "/v": ("validate", "Alias for /validate"),
+    "/new-skill": ("new_skill", "Create a new skill"),
+    "/save": ("save", "Save session checkpoint"),
+    "/sessions": ("sessions", "Show session info"),
+    "/max-steps": ("max_steps", "Set max steps [N]"),
 }
 
 
@@ -737,6 +776,8 @@ def handle_command(tg: TelegramConfig, chat_id: str, text: str, session: Gateway
         "skills": _cmd_skills, "docs": _cmd_docs,
         "config": _cmd_config, "lang": _cmd_lang,
         "history": _cmd_history, "validate": _cmd_validate,
+        "new_skill": _cmd_new_skill, "save": _cmd_save,
+        "sessions": _cmd_sessions, "max_steps": _cmd_max_steps,
     }
 
     handler = handler_map.get(COMMANDS.get(cmd, [None])[0] if cmd in COMMANDS else None)
@@ -777,8 +818,8 @@ def _cmd_help(tg, chat_id, args, session) -> str:
     cats = [
         ("\u2699\ufe0f <b>Execution</b>", ["/plan [on|off]", "/ephemeral [on|off]", "/ask [on|off]", "/validate [on|off|once]"]),
         ("\U0001f4ca <b>Info</b>", ["/status", "/stats", "/history", "/context", "/memory", "/skills", "/docs", "/config", "/pwd"]),
-        ("\U0001f4dd <b>Manage</b>", ["/model [N|add ...]", "/vm [N|off]", "/template [model]", "/lang [en|es]", "/cd &lt;path&gt;"]),
-        ("\U0001f504 <b>Session</b>", ["/retry", "/reset", "/compact", "/train [stats|list|clear|export]", "/cancel"]),
+        ("\U0001f4dd <b>Manage</b>", ["/model [N|add ...]", "/vm [N|off]", "/template [model]", "/lang [en|es]", "/cd &lt;path&gt;", "/new-skill &lt;name&gt;", "/max-steps [N]"]),
+        ("\U0001f504 <b>Session</b>", ["/retry", "/reset", "/save", "/sessions", "/compact", "/train [stats|list|clear|export]", "/cancel"]),
     ]
     for title, cmds in cats:
         lines.append(f"  {title}")
@@ -1191,6 +1232,81 @@ def _cmd_history(tg, chat_id, args, session) -> str:
     return "\n".join(lines)
 
 
+def _cmd_new_skill(tg, chat_id, args, session) -> str:
+    if not args:
+        return "Usage: <code>/new-skill &lt;name&gt;</code>"
+    name = " ".join(args).strip()
+    try:
+        slug = name.lower().replace(" ", "-").replace("_", "-")
+        slug = "".join(c for c in slug if c.isalnum() or c == "-")
+        root = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
+        skill_dir = root / "skills" / slug
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.exists():
+            skill_file.write_text(
+                f"# {name}\n\n"
+                "Summary: \n\n"
+                "## When To Use\n\n"
+                "- \n\n"
+                "## Steps\n\n"
+                "1. \n\n"
+                "## Verification\n\n"
+                "- \n\n"
+                "## Caveats\n\n"
+                "- \n",
+                encoding="utf-8",
+            )
+        from ..store import upsert_skill
+        upsert_skill(root / "memory" / "memory.md", slug, "User-created skill.")
+        return f"\U0001f4a1 Skill created: <code>{escape_html(str(skill_file))}</code>"
+    except Exception as e:
+        return f"Error: {escape_html(str(e)[:300])}"
+
+
+def _cmd_save(tg, chat_id, args, session) -> str:
+    title = " ".join(args).strip() or f"gateway-session-{chat_id}"
+    try:
+        root = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
+        sessions_dir = root / "sessions"
+        sessions_dir.mkdir(parents=True, exist_ok=True)
+        lines = [f"# {title}", "", "## History"]
+        for i, turn in enumerate(session.history, 1):
+            lines.append(f"### Turn {i}")
+            lines.append(f"User: {turn['user']}")
+            lines.append(f"Assistant: {turn['assistant'][:500]}")
+            lines.append("")
+        path = sessions_dir / f"{title}.md"
+        path.write_text("\n".join(lines), encoding="utf-8")
+        return f"\U0001f4be Session saved: <code>{escape_html(str(path.name))}</code>"
+    except Exception as e:
+        return f"Error: {escape_html(str(e)[:300])}"
+
+
+def _cmd_sessions(tg, chat_id, args, session) -> str:
+    lines = [f"<b>\U0001f4cb Current Session</b>"]
+    lines.append(f"  Turns: {len(session.history)}")
+    lines.append(f"  Plan: {'ON' if session.plan_mode else 'OFF'}")
+    lines.append(f"  Max steps: {session.max_steps}")
+    lines.append(f"  Summary: {'yes' if session.session_summary else 'no'}")
+    if session.history:
+        lines.append(f"  Last task: <code>{escape_html(session.history[-1]['user'][:80])}</code>")
+    return "\n".join(lines)
+
+
+def _cmd_max_steps(tg, chat_id, args, session) -> str:
+    if not args:
+        return f"Max steps: <b>{session.max_steps}</b>"
+    try:
+        n = int(args[0])
+        if n < 1 or n > 100:
+            return "Max steps must be between 1 and 100."
+        session.max_steps = n
+        return f"Max steps: <b>{n}</b>"
+    except ValueError:
+        return "Usage: <code>/max-steps [N]</code>"
+
+
 def _load_delux_config():
     from ..config import load_config
     delux_home = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
@@ -1214,6 +1330,12 @@ def run_gateway(
         return 1
 
     log.info("Gateway started for %d chat(s): %s", len(tg.chat_ids), tg.chat_ids)
+
+    from ..ddg_proxy import ensure_proxy
+    from ..config import load_config as _load_delux_config
+    _gw_delux_home = Path(config_path) if config_path else Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
+    ensure_proxy(_load_delux_config(_gw_delux_home))
+
     last_update_id = 0
 
     while True:
@@ -1323,7 +1445,7 @@ def _process_prompt(tg: TelegramConfig, chat_id: str, text: str, session: Gatewa
         history=session.history,
     )
 
-    handler = GatewayEventHandler(tg.token, chat_id, session)
+    handler = GatewayEventHandler(tg.token, chat_id, session, model_name=config.model)
     handler.set_cancel_flag(cancel_ev)
     handler._send_initial(text)
 
@@ -1346,6 +1468,7 @@ def _process_prompt(tg: TelegramConfig, chat_id: str, text: str, session: Gatewa
         ephemeral=session.ephemeral,
         system_suffix=system_suffix,
         lang=session.lang,
+        max_steps=session.max_steps,
     )
 
     result_container: list[str] = []

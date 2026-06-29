@@ -30,12 +30,15 @@ Breaks down the problem into sub-problems with confidence scores and fallback st
 ## Response Examples
 
 ### Agent invokes reasoning
-```json
-{"action":"run_skill","skill":"delux-reasoning","args":"analyze: server is running slow, find the cause","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-reasoning</skill>
+<args>analyze: server is running slow, find the cause</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns structured analysis
-```json
+```
 {
   "delux_reasoning": {
     "analysis": {
@@ -58,11 +61,18 @@ Breaks down the problem into sub-problems with confidence scores and fallback st
 ```
 --- delux-reasoning example ---
 USER: "analyze: server is running slow"
-AGENT: {"action":"run_skill","skill":"delux-reasoning","args":"analyze: server is running slow","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-reasoning</skill>
+<args>analyze: server is running slow</args>
+<timeout>30</timeout>
 RESULT: {"delux_reasoning": {"analysis": {"problem_statement": "Server is running slow", "sub_problems": [...], "confidence": 0.92, "next_action": "shell"}, "reasoning_trace": "..."}}
-NEXT ACTION: {"action":"shell","command":"top -bn1 | head -5","timeout":30}
+NEXT ACTION:
+<action>shell</action>
+<command>top -bn1 | head -5</command>
+<timeout>30</timeout>
 ```
 
 ## Caveats
-- Reasoning is displayed for transparency — the agent still returns JSON actions
+- Reasoning is displayed for transparency — the agent still returns structured result actions
 - DeepSeek-reasoner or similar reasoning models recommended for complex chains

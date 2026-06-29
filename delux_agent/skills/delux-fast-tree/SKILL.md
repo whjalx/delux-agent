@@ -21,8 +21,11 @@ Run in any directory: `delux-fast-tree`
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-fast-tree","args":"","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-fast-tree</skill>
+<args></args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns result
@@ -42,9 +45,15 @@ Run in any directory: `delux-fast-tree`
 ```
 --- delux-fast-tree example ---
 USER: "show me the project structure"
-AGENT: {"action":"run_skill","skill":"delux-fast-tree","args":"","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-fast-tree</skill>
+<args></args>
+<timeout>15</timeout>
 RESULT: (directory tree output)
-NEXT ACTION: {"action":"final","message":"Project has 3 directories and 5 files"}
+NEXT ACTION:
+<action>final</action>
+<message>Project has 3 directories and 5 files</message>
 ```
 
 ## Caveats

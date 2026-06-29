@@ -24,8 +24,11 @@ Default size: 100MB. Specify a custom size as the first argument.
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-disk-benchmark","args":"200","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-disk-benchmark</skill>
+<args>200</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -47,9 +50,15 @@ Benchmark Finished.
 ```
 --- delux-disk-benchmark example ---
 USER: "how fast is the disk on this server?"
-AGENT: {"action":"run_skill","skill":"delux-disk-benchmark","args":"100","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-disk-benchmark</skill>
+<args>100</args>
+<timeout>30</timeout>
 RESULT: Sequential Write: 450 MB/s, Sequential Read: 1200 MB/s
-NEXT ACTION: {"action":"final","message":"Disk benchmark: 450 MB/s write, 1200 MB/s read"}
+NEXT ACTION:
+<action>final</action>
+<message>Disk benchmark: 450 MB/s write, 1200 MB/s read</message>
 ```
 
 ## Caveats

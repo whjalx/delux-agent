@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..agent import AgentStep
 
+from ..templates import action_to_xml
+
 
 TRAINING_DIR_NAME = "training"
 DATASET_FILE = "dataset.jsonl"
@@ -22,23 +24,51 @@ Capabilities:
 
 Rules:
 - Never use sudo or privilege escalation
-- Work autonomously. Return ONLY a JSON action object.
+- Work autonomously. Return ONLY an action in XML format.
 
 After each action you receive a result:
 - If result starts with "SUCCESS:": the action succeeded. Do NOT repeat it. Proceed to the NEXT step or finalize.
 - If result starts with "ERROR:": analyze the error and try a DIFFERENT approach. NEVER repeat the same failing command.
 
-Allowed actions (return exactly one JSON object):
-{"action":"shell","command":"command","timeout":60}
-{"action":"read_file","path":"relative/path"}
-{"action":"write_file","path":"relative/path","content":"..."}
-{"action":"append_file","path":"relative/path","content":"..."}
-{"action":"move_file","src":"path","dst":"path"}
-{"action":"search_files","query":"text"}
-{"action":"run_skill","skill":"skill-slug","args":"args","timeout":30}
-{"action":"create_skill","name":"name","summary":"...","body":"..."}
-{"action":"remember","note":"..."}
-{"action":"final","message":"..."}
+Allowed actions (return exactly one action in XML format):
+<action>shell</action>
+<command>command</command>
+<timeout>60</timeout>
+---
+<action>read_file</action>
+<path>relative/path</path>
+---
+<action>write_file</action>
+<path>relative/path</path>
+<content>...</content>
+---
+<action>append_file</action>
+<path>relative/path</path>
+<content>...</content>
+---
+<action>move_file</action>
+<src>path</src>
+<dst>path</dst>
+---
+<action>search_files</action>
+<query>text</query>
+---
+<action>run_skill</action>
+<skill>skill-slug</skill>
+<args>args</args>
+<timeout>30</timeout>
+---
+<action>create_skill</action>
+<name>name</name>
+<summary>...</summary>
+<body>...</body>
+---
+<action>remember</action>
+<note>...</note>
+---
+<action>final</action>
+<summary>What was requested vs what was done</summary>
+<message>...</message>
 """
 
 
@@ -128,8 +158,8 @@ def build_training_example(
 
     # Add conversation turns
     for step in steps:
-        action_json = json.dumps(step.action, ensure_ascii=False)
-        messages.append({"role": "assistant", "content": action_json})
+        action_xml_str = action_to_xml(step.action)
+        messages.append({"role": "assistant", "content": action_xml_str})
 
         if step.action.get("action") != "final":
             messages.append({"role": "user", "content": step.result})
@@ -138,9 +168,10 @@ def build_training_example(
     if steps and steps[-1].action.get("action") == "final":
         pass  # Already included in steps
     else:
+        msg_content = action_to_xml({"action": "final", "message": final_answer})
         messages.append({
             "role": "assistant",
-            "content": json.dumps({"action": "final", "message": final_answer}, ensure_ascii=False),
+            "content": msg_content,
         })
 
     # Add metadata

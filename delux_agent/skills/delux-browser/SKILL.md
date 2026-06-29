@@ -50,59 +50,74 @@ Actions:
 ## Response Examples
 
 ### Extract visible text from a page
-```json
-{"action":"run_skill","skill":"delux-browser","args":"text https://example.com","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-browser</skill>
+<args>text https://example.com</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns extracted text
-```json
-{
-  "action": "text",
-  "url": "https://example.com",
-  "status": "ok",
-  "text": "Example Domain\n\nThis domain is for use in illustrations in documents..."
-}
+```
+<action>text</action>
+<url>https://example.com</url>
+<status>ok</status>
+<text>Example Domain
+
+This domain is for use in illustrations in documents...</text>
 ```
 
 ### Take a screenshot
-```json
-{"action":"run_skill","skill":"delux-browser","args":"screenshot https://example.com","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-browser</skill>
+<args>screenshot https://example.com</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns screenshot path
-```json
-{
-  "action": "screenshot",
-  "url": "https://example.com",
-  "status": "ok",
-  "file": "/tmp/delux_screenshot_abc123.png",
-  "preview": "Screenshot saved: /tmp/delux_screenshot_abc123.png"
-}
+```
+<action>screenshot</action>
+<url>https://example.com</url>
+<status>ok</status>
+<file>/tmp/delux_screenshot_abc123.png</file>
+<preview>Screenshot saved: /tmp/delux_screenshot_abc123.png</preview>
 ```
 
 ### Extract all links
-```json
-{"action":"run_skill","skill":"delux-browser","args":"links https://example.com 'a'","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-browser</skill>
+<args>links https://example.com 'a'</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns links
-```json
-{
-  "action": "links",
-  "url": "https://example.com",
-  "status": "ok",
-  "links": [{"href": "https://iana.org/domains/example", "text": "Learn more"}],
-  "count": 1
-}
+```
+<action>links</action>
+<url>https://example.com</url>
+<status>ok</status>
+<links>[{"href": "https://iana.org/domains/example", "text": "Learn more"}]</links>
+<count>1</count>
 ```
 
 ### Prompt injection example
 ```
 --- delux-browser example ---
 USER: "get the text from https://example.com"
-AGENT: {"action":"run_skill","skill":"delux-browser","args":"text https://example.com","timeout":30}
-RESULT: {"action":"text","url":"https://example.com","status":"ok","text":"Example Domain..."}
-NEXT ACTION: {"action":"final","message":"The page says: Example Domain"}
+AGENT:
+<action>run_skill</action>
+<skill>delux-browser</skill>
+<args>text https://example.com</args>
+<timeout>30</timeout>
+RESULT:
+<action>text</action>
+<url>https://example.com</url>
+<status>ok</status>
+<text>Example Domain...</text>
+NEXT ACTION:
+<action>final</action>
+<message>The page says: Example Domain</message>
 ```
 
 ## Caveats

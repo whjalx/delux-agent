@@ -21,8 +21,11 @@ Run inside a git repository: `delux-git-summary`
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-git-summary","args":"","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-git-summary</skill>
+<args></args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns result
@@ -44,9 +47,16 @@ Recent History:
 ```
 --- delux-git-summary example ---
 USER: "what's the current git status?"
-AGENT: {"action":"run_skill","skill":"delux-git-summary","args":"","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-git-summary</skill>
+<args></args>
+<timeout>15</timeout>
 RESULT: Branch: main, 1 modified file, 3 commits behind remote
-NEXT ACTION: {"action":"shell","command":"git status --short","timeout":15}
+NEXT ACTION:
+<action>shell</action>
+<command>git status --short</command>
+<timeout>15</timeout>
 ```
 
 ## Caveats

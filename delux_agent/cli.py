@@ -56,6 +56,7 @@ _ACTION_ICONS = {
     "browser_close": "close",
     "vision_analyze": "eye",
     "delegate_task": "delegate",
+    "call_mcp": "mcp",
     "cron_add": "cron+", "cron_remove": "cron-", "cron_list": "cron",
     "cron_enable": "cron", "cron_run": "cron>", "cron_logs": "cron",
     "kanban_add": "kanban+", "kanban_list": "kanban",
@@ -85,6 +86,7 @@ _ACTION_COLORS = {
     "browser_close": DIM,
     "vision_analyze": MAGENTA,
     "delegate_task": YELLOW,
+    "call_mcp": MAGENTA,
     "cron_add": MAGENTA, "cron_remove": MAGENTA, "cron_list": MAGENTA,
     "cron_enable": MAGENTA, "cron_run": MAGENTA, "cron_logs": MAGENTA,
     "kanban_add": YELLOW, "kanban_list": YELLOW,
@@ -172,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             print("No dataset RAG data to package.")
             return 0
         import gzip, shutil
-        dst = Path(pkg_args.output) if pkg_args.output else Path(root).parent.parent / "assets" / "dataset-rag.jsonl.gz"
+        _project_root = Path(__file__).resolve().parent.parent
+        dst = Path(pkg_args.output) if pkg_args.output else _project_root / "rag-raw" / "dataset-rag.jsonl.gz"
         dst.parent.mkdir(parents=True, exist_ok=True)
         if ds.entries_path.exists():
             with open(ds.entries_path, "rb") as src_f:
@@ -281,12 +284,22 @@ def main(argv: list[str] | None = None) -> int:
             result = board.delete(kb_args.card_id)
             print(result.output)
         return 0
+    if argv and argv[0] == "ddg-proxy":
+        from .ddg_proxy import run_ddg_proxy
+        dp_parser = argparse.ArgumentParser(prog="delux ddg-proxy", description="Start DDG-AI Proxy (free OpenAI-compatible API via DuckDuckGo AI Chat).")
+        dp_parser.add_argument("--port", type=int, default=8765, help="Port (default: 8765)")
+        dp_parser.add_argument("--host", type=str, default="127.0.0.1", help="Host (default: 127.0.0.1)")
+        dp_args = dp_parser.parse_args(argv[1:])
+        return run_ddg_proxy(host=dp_args.host, port=dp_args.port)
 
     parser = build_parser()
     args = parser.parse_args(argv)
     root = Path(args.home).expanduser().resolve() if args.home else None
     config = load_config(root)
     ensure_workspace(config.root)
+
+    from .ddg_proxy import ensure_proxy
+    ensure_proxy(config)
 
     if args.init:
         print(f"Initialized Delux workspace at {config.root}")
@@ -417,6 +430,10 @@ def _cli_event_handler(event: str, payload: dict) -> None:
             print(_hl(label, color, str(action.get("image_path", ""))[:200]))
         elif kind == "delegate_task":
             print(_hl(label, color, str(action.get("task", ""))[:200]))
+        elif kind == "call_mcp":
+            server = str(action.get("server", ""))
+            tool = str(action.get("tool", ""))
+            print(_hl(label, color, f"{server}.{tool}"))
         elif kind.startswith("cron_"):
             detail = ""
             if kind == "cron_add":

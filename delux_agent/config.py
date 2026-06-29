@@ -70,11 +70,13 @@ class Config:
     ctx_api_key: str = ""
     ctx_api_endpoint: str = ""
     browser_screenshot_dir: str = ""
+    browser_headless: bool = True
     vision_model: str = ""
     vision_api_base: str = ""
     vision_api_key: str = ""
     cron_enabled: bool = False
     kanban_enabled: bool = False
+    plan_free: bool = False
 
     @property
     def builtin_skills_dir(self) -> Path:
@@ -196,11 +198,13 @@ def load_config(cwd: Path | None = None) -> Config:
         ctx_api_key=os.environ.get("DELUX_CTX_API_KEY") or file_config.get("ctx_api_key", ""),
         ctx_api_endpoint=os.environ.get("DELUX_CTX_API_ENDPOINT") or file_config.get("ctx_api_endpoint", ""),
         browser_screenshot_dir=file_config.get("browser_screenshot_dir", ""),
+        browser_headless=bool(file_config.get("browser_headless", True)),
         vision_model=file_config.get("vision_model", ""),
         vision_api_base=file_config.get("vision_api_base", ""),
         vision_api_key=file_config.get("vision_api_key", ""),
         cron_enabled=bool(file_config.get("cron_enabled", False)),
         kanban_enabled=bool(file_config.get("kanban_enabled", False)),
+        plan_free=bool(file_config.get("plan_free", False)),
     )
 
 

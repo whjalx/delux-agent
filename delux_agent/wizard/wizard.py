@@ -83,6 +83,15 @@ PRESETS = [
         True,
         "DeepSeek API key required. Models: deepseek-chat, deepseek-reasoner.",
     ),
+    ProviderPreset(
+        "ddg-proxy",
+        "DDG-AI Proxy (free local)",
+        "http://localhost:8765/v1",
+        "gpt-4o-mini",
+        False,
+        "Free OpenAI-compatible API via DuckDuckGo AI Chat (duck.ai). "
+        "Uses Playwright + Chromium. Start: delux ddg-proxy",
+    ),
 ]
 
 
@@ -479,20 +488,20 @@ def _install_skill_template(root: Path) -> None:
 def _build_base_library(target_path: Path) -> None:
     import random
     scenarios = [
-        {'q': 'Scan subnet {subnet} for open SSH ports.', 'a': '{"action": "shell", "command": "nmap -p 22 {subnet}"}'},
-        {'q': 'Fix permissions in {dir} for .env files.', 'a': '{"action": "shell", "command": "find {dir} -name ".env" -exec chmod 600 {} \\;"}'},
-        {'q': 'Check Docker containers with status "exited".', 'a': '{"action": "shell", "command": "docker ps -a -f status=exited"}'},
-        {'q': 'Search for {error} in system logs today.', 'a': '{"action": "shell", "command": "journalctl --since today | grep -i {error}"}'},
-        {'q': 'Create backup of {dir} excluding node_modules.', 'a': '{"action": "shell", "command": "tar --exclude="node_modules" -czf backup.tar.gz {dir}"}'},
-        {'q': 'Send Telegram alert: Service {service} is down.', 'a': '{"action": "run_skill", "skill": "delux-telegram-notify", "args": "CRITICAL: {service} is DOWN"}'},
-        {'q': 'Analyze {file} for undocumented functions.', 'a': '{"action": "run_skill", "skill": "delux-writer-pro", "args": "--path {file} --analyze docs"}'},
-        {'q': 'Reason through this: {problem}. Break it down step by step.', 'a': '{"action": "run_skill", "skill": "delux-reasoning", "args": "{problem}"}'},
-        {'q': 'Review the code in {file} for bugs and improvements.', 'a': '{"action": "run_skill", "skill": "delux-codex", "args": "{file}"}'},
-        {'q': 'Look up what we know about {topic} across all sources.', 'a': '{"action": "run_skill", "skill": "delux-oracle", "args": "{topic}"}'},
-        {'q': 'Validate our work before finishing. Check the last actions.', 'a': '{"action": "run_skill", "skill": "delux-judge", "args": "..."}'},
-        {'q': 'Kill process on port {port}.', 'a': '{"action": "shell", "command": "lsof -ti:{port} | xargs -r kill -9"}'},
-        {'q': 'Find the largest files in {dir}.', 'a': '{"action": "shell", "command": "du -sh {dir}/* 2>/dev/null | sort -rh | head -10"}'},
-        {'q': 'Check disk usage and warn if over {pct}%.', 'a': '{"action": "shell", "command": "df -h | awk \'NR>1 {if ($5+0 > {pct}) print \\\"WARNING: \\\" $6 \\\" at \\\" $5}\'"}'},
+        {'q': 'Scan subnet {subnet} for open SSH ports.', 'a': '<action>shell</action>\n<command>nmap -p 22 {subnet}</command>\n<timeout>60</timeout>'},
+        {'q': 'Fix permissions in {dir} for .env files.', 'a': '<action>shell</action>\n<command>find {dir} -name ".env" -exec chmod 600 {} \;</command>\n<timeout>30</timeout>'},
+        {'q': 'Check Docker containers with status "exited".', 'a': '<action>shell</action>\n<command>docker ps -a -f status=exited</command>\n<timeout>30</timeout>'},
+        {'q': 'Search for {error} in system logs today.', 'a': '<action>shell</action>\n<command>journalctl --since today | grep -i {error}</command>\n<timeout>30</timeout>'},
+        {'q': 'Create backup of {dir} excluding node_modules.', 'a': '<action>shell</action>\n<command>tar --exclude="node_modules" -czf backup.tar.gz {dir}</command>\n<timeout>120</timeout>'},
+        {'q': 'Send Telegram alert: Service {service} is down.', 'a': '<action>run_skill</action>\n<skill>delux-telegram-notify</skill>\n<args>CRITICAL: {service} is DOWN</args>\n<timeout>30</timeout>'},
+        {'q': 'Analyze {file} for undocumented functions.', 'a': '<action>run_skill</action>\n<skill>delux-writer-pro</skill>\n<args>--path {file} --analyze docs</args>\n<timeout>60</timeout>'},
+        {'q': 'Reason through this: {problem}. Break it down step by step.', 'a': '<action>run_skill</action>\n<skill>delux-reasoning</skill>\n<args>{problem}</args>\n<timeout>120</timeout>'},
+        {'q': 'Review the code in {file} for bugs and improvements.', 'a': '<action>run_skill</action>\n<skill>delux-codex</skill>\n<args>{file}</args>\n<timeout>60</timeout>'},
+        {'q': 'Look up what we know about {topic} across all sources.', 'a': '<action>run_skill</action>\n<skill>delux-oracle</skill>\n<args>{topic}</args>\n<timeout>60</timeout>'},
+        {'q': 'Validate our work before finishing. Check the last actions.', 'a': '<action>run_skill</action>\n<skill>delux-judge</skill>\n<args>...</args>\n<timeout>30</timeout>'},
+        {'q': 'Kill process on port {port}.', 'a': '<action>shell</action>\n<command>lsof -ti:{port} | xargs -r kill -9</command>\n<timeout>30</timeout>'},
+        {'q': 'Find the largest files in {dir}.', 'a': '<action>shell</action>\n<command>du -sh {dir}/* 2>/dev/null | sort -rh | head -10</command>\n<timeout>30</timeout>'},
+        {'q': 'Check disk usage and warn if over {pct}%.', 'a': '<action>shell</action>\n<command>df -h | awk \'NR>1 {if ($5+0 > {pct}) print "WARNING: " $6 " at " $5}\'</command>\n<timeout>30</timeout>'},
     ]
 
     subnets = ['192.168.1.0/24', '10.0.0.0/8', '172.16.0.0/12']
@@ -680,6 +689,38 @@ def _print_context(root: Path) -> None:
     print(f"  {docs[:600].strip() if docs else 'No docs loaded.'}")
 
 
+def _ensure_playwright(root: Path) -> None:
+    try:
+        import playwright  # noqa: F401
+        return
+    except ImportError:
+        pass
+    if not _yes_no("  Playwright no instalado. ¿Instalar ahora (pip install playwright>=1.40)?", True):
+        print(f"  {YELLOW}DDG-AI Proxy requiere Playwright. Ejecuta después: pip install 'playwright>=1.40'{RESET}")
+        return
+    import subprocess, sys
+    print("  Instalando Playwright...")
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "playwright>=1.40"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        )
+    except Exception as exc:
+        print(f"  {RED}Error instalando Playwright: {exc}{RESET}")
+        return
+    print("  Instalando Chromium...")
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+        )
+    except Exception as exc:
+        print(f"  {RED}Error instalando Chromium: {exc}{RESET}")
+        print(f"  {YELLOW}Ejecuta después: python -m playwright install chromium{RESET}")
+        return
+    print(f"  {GREEN}Playwright + Chromium instalados.{RESET}")
+
+
 def _configure_plan_model(root: Path) -> None:
     print("\n  Plan Mode Model Configuration")
     print("  " + "-" * 30)
@@ -704,24 +745,25 @@ def _configure_plan_model(root: Path) -> None:
     else:
         return
     if values:
+        is_ddg_proxy = 1 <= pnum <= len(PRESETS) and PRESETS[pnum - 1].key == "ddg-proxy"
         _update_config_file(root, {
             "plan_model": values.get("model", ""),
             "plan_provider": values.get("provider", ""),
             "plan_api_base": values.get("api_base", ""),
             "plan_api_key": values.get("api_key", ""),
+            "plan_free": is_ddg_proxy,
         })
+        if is_ddg_proxy:
+            _ensure_playwright(root)
         print(f"  {GREEN}Plan mode model configured.{RESET}")
 
 
 def _import_dataset_rag(root: Path) -> None:
     project_root = Path(__file__).resolve().parent.parent.parent
-    ds_paths = [
-        (project_root / "dataset_hermes" / "data" / "kimi" / "train.parquet"),
-        (project_root / "dataset_hermes" / "data" / "glm-5.1" / "train.parquet"),
-        (project_root / "dataset_multiturn" / "data" / "train-00000-of-00001.parquet"),
-    ]
-    if not any(p.exists() for p in ds_paths):
-        return
+
+    # Pre-built RAG file
+    prebuilt = project_root / "rag-raw" / "dataset-rag.jsonl.gz"
+
     # Check if RAG already has data to avoid redundant imports
     try:
         from ..dataset_rag import DatasetRAG
@@ -731,6 +773,31 @@ def _import_dataset_rag(root: Path) -> None:
             return
     except Exception:
         pass
+
+    if prebuilt.exists():
+        import shutil, gzip, json
+        print(f"\n  {YELLOW}Installing pre-built trajectory RAG...{RESET}")
+        try:
+            dst = root / "dataset-rag"
+            dst.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(prebuilt), str(dst / "entries.jsonl.gz"))
+            with gzip.open(prebuilt, "rb") as f:
+                count = sum(1 for _ in f)
+            (dst / "manifest.json").write_text(json.dumps({"prebuilt": count}, ensure_ascii=False), encoding="utf-8")
+            print(f"  {GREEN}Installed {count} pre-built trajectories.{RESET}")
+        except Exception as exc:
+            print(f"  {YELLOW}Pre-built RAG install failed: {exc}{RESET}")
+        return
+
+    ds_paths = [
+        (project_root / "dataset_hermes" / "data" / "kimi" / "train.parquet"),
+        (project_root / "dataset_hermes" / "data" / "glm-5.1" / "train.parquet"),
+        (project_root / "dataset_multiturn" / "data" / "train-00000-of-00001.parquet"),
+    ]
+    if not any(p.exists() for p in ds_paths):
+        print(f"  {DIM}No dataset files found for RAG import.{RESET}")
+        return
+
     print(f"\n  {YELLOW}Importing agent trajectory datasets into local RAG...{RESET}")
     try:
         from ..dataset_rag import DatasetRAG

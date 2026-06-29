@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Playwright browser automation — production-grade CLI with JSON output."""
+"""Playwright browser automation — production-grade CLI with JSON output.
+Cross-platform: works on macOS, Linux, and Android (Termux/chroot),
+across x86_64, arm64, armv7 architectures."""
 
 import json
 import os
+import platform
 import re
 import sys
 import tempfile
@@ -28,6 +31,80 @@ VALID_ACTIONS = {
     "screenshot", "html", "text", "click", "fill",
     "links", "table", "evaluate", "pdf",
 }
+
+
+def _is_termux() -> bool:
+    return bool(os.environ.get("PREFIX")) and os.path.exists(
+        os.path.join(os.environ["PREFIX"], "bin")
+    )
+
+
+def _detect_platform() -> str:
+    if _is_termux():
+        return "android"
+    return platform.system().lower()
+
+
+def _find_chromium() -> str | None:
+    candidates = []
+    prefix = os.environ.get("PREFIX", "")
+    if prefix:
+        candidates.append(os.path.join(prefix, "bin", "chromium"))
+        candidates.append(os.path.join(prefix, "bin", "chromium-browser"))
+        candidates.append(os.path.join(prefix, "bin", "chromium-browser-stable"))
+    candidates.extend([
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    ])
+    env_path = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE")
+    if env_path:
+        candidates.insert(0, env_path)
+    for path in candidates:
+        if path and os.path.exists(path) and os.access(path, os.X_OK):
+            return path
+
+
+def _get_launch_args() -> list[str]:
+    args = ["--no-sandbox"]
+    plat = _detect_platform()
+    if plat == "android":
+        args.extend(["--disable-dev-shm-usage", "--disable-setuid-sandbox", "--disable-gpu"])
+    elif plat == "linux":
+        args.extend(["--disable-dev-shm-usage", "--disable-setuid-sandbox"])
+    return args
+
+
+def _launch_browser(p, headless: bool = True) -> tuple:
+    """Launch available browser (chromium → firefox). Returns (browser, type_name)."""
+    chrome_path = _find_chromium()
+    launch_kwargs = {
+        "headless": headless,
+        "args": _get_launch_args(),
+    }
+    if chrome_path:
+        launch_kwargs["executable_path"] = chrome_path
+
+    for browser_name in ("chromium", "firefox"):
+        launcher = getattr(p, browser_name, None)
+        if launcher is None:
+            continue
+        try:
+            if browser_name == "firefox":
+                fb_args = ["--no-sandbox"] if _detect_platform() in ("android", "linux") else []
+                browser = launcher.launch(headless=headless, args=fb_args)
+            else:
+                browser = launcher.launch(**launch_kwargs)
+            return browser, browser_name
+        except Exception:
+            continue
+    raise RuntimeError(
+        "No working browser found (tried chromium, firefox). "
+        "Install with: pip install playwright && python -m playwright install chromium"
+    )
 
 
 def _validate_url(url: str) -> str:
@@ -104,6 +181,7 @@ def _browser_action(
     *args: str,
     viewport: dict | None = None,
     timeout: int = DEFAULT_TIMEOUT,
+    headless: bool = True,
 ) -> dict:
     """Execute a single browser action. Returns result dict."""
     result: dict = {"action": action, "url": url, "status": "ok"}
@@ -124,21 +202,14 @@ def _browser_action(
     try:
         with sync_playwright() as p:
             try:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-dev-shm-usage",
-                        "--disable-setuid-sandbox",
-                        "--disable-gpu",
-                    ],
-                )
+                browser, browser_type = _launch_browser(p, headless=headless)
+                result["browser"] = browser_type
             except Exception as e:
                 msg = str(e)[:300]
                 return {
                     "status": "error",
                     "error": (
-                        f"Failed to launch Chromium: {msg}. "
+                        f"Failed to launch browser: {msg}. "
                         "Install browsers with: python3 -m playwright install chromium"
                     ),
                 }
@@ -370,8 +441,10 @@ def browser(action: str, url: str, *args: str, **kwargs: str) -> str:
     except ValueError as e:
         return json.dumps({"status": "error", "error": str(e)}, ensure_ascii=False)
 
+    headless = kwargs.get("headed", "") != "true"
+
     try:
-        result = _browser_action(action, url, *args, viewport=viewport, timeout=timeout)
+        result = _browser_action(action, url, *args, viewport=viewport, timeout=timeout, headless=headless)
     except Exception:
         result = {
             "status": "error",
@@ -381,7 +454,7 @@ def browser(action: str, url: str, *args: str, **kwargs: str) -> str:
     return json.dumps(result, indent=2, ensure_ascii=False, default=str)
 
 
-_BOOLEAN_FLAGS = {"--json"}
+_BOOLEAN_FLAGS = {"--json", "--headed"}
 _FLAGS_WITH_VALUE = {"--viewport", "--timeout"}
 
 

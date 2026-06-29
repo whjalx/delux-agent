@@ -32,12 +32,15 @@ Validates a proposed agent action for safety, correctness, and completeness.
 ## Response Examples
 
 ### Agent invokes judge before final
-```json
-{"action":"run_skill","skill":"delux-judge","args":"{\"action\":\"final\",\"message\":\"all done\"}","timeout":15}
+```
+<action>run_skill</action>
+<skill>delux-judge</skill>
+<args>{"action":"final","message":"all done"}</args>
+<timeout>15</timeout>
 ```
 
 ### Skill returns verdict
-```json
+```
 {
   "delux_judge": {
     "verdict": "PASS",
@@ -49,7 +52,7 @@ Validates a proposed agent action for safety, correctness, and completeness.
 ```
 
 ### Judge catches a problem
-```json
+```
 {
   "delux_judge": {
     "verdict": "FAIL_WARNING",
@@ -64,9 +67,16 @@ Validates a proposed agent action for safety, correctness, and completeness.
 ```
 --- delux-judge example ---
 USER: "validate our work before finishing"
-AGENT: {"action":"run_skill","skill":"delux-judge","args":"{\"action\":\"shell\",\"command\":\"rm -rf /tmp/test\"}","timeout":15}
+AGENT:
+<action>run_skill</action>
+<skill>delux-judge</skill>
+<args>{"action":"shell","command":"rm -rf /tmp/test"}</args>
+<timeout>15</timeout>
 RESULT: {"delux_judge": {"verdict": "FAIL_WARNING", "issues": ["WARNING: Destructive pattern 'rm ' in command"], "recommendation": "review"}}
-NEXT ACTION: {"action":"shell","command":"ls /tmp/test","timeout":30}
+NEXT ACTION:
+<action>shell</action>
+<command>ls /tmp/test</command>
+<timeout>30</timeout>
 ```
 
 ## Caveats

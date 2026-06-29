@@ -20,8 +20,11 @@ delux-quick-search <query>
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-quick-search","args":"nginx configuration for reverse proxy","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-quick-search</skill>
+<args>nginx configuration for reverse proxy</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -37,9 +40,16 @@ delux-quick-search <query>
 ```
 --- delux-quick-search example ---
 USER: "how do I install docker on fedora?"
-AGENT: {"action":"run_skill","skill":"delux-quick-search","args":"install docker fedora","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-quick-search</skill>
+<args>install docker fedora</args>
+<timeout>30</timeout>
 RESULT: Web search results with installation steps
-NEXT ACTION: {"action":"shell","command":"sudo dnf install -y docker","timeout":60}
+NEXT ACTION:
+<action>shell</action>
+<command>sudo dnf install -y docker</command>
+<timeout>60</timeout>
 ```
 
 ## Caveats

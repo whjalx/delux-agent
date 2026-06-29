@@ -82,7 +82,7 @@ class PlanExecution:
         lines.append("ACTION REQUIRED:")
         lines.append("- Execute this step using the appropriate tool (shell, write_file, search_files, etc.)")
         lines.append("- If the step is already done by previous actions, skip it:")
-        lines.append('  {"action":"skip_step","step_id":' + str(step.id) + ',"reason":"why"}')
+        lines.append("  <action>skip_step</action>\n  <step_id>" + str(step.id) + "</step_id>\n  <reason>why</reason>")
         lines.append("- If this step fails 3 times consecutively, skip it and move on.")
         lines.append("- Do NOT use final until ALL steps are done/skipped.")
         return "\n".join(lines)
@@ -181,65 +181,40 @@ def build_planner_prompt(
     history: str = "",
     lang: str = "en",
 ) -> str:
+    example = """<plan>
+<summary>Create 3 landing page files</summary>
+<step>
+<description>Create index.html with hero and CTA</description>
+<detail>Write semantic HTML5 structure</detail>
+</step>
+<step>
+<description>Create style.css with dark theme</description>
+<detail>Add reset, typography, responsive grid</detail>
+</step>
+<step>
+<description>Create script.js with interactions</description>
+<detail>Mobile nav toggle, smooth scroll</detail>
+</step>
+</plan>"""
     if lang == "es":
-        return f"""Eres el planificador de Delux (MODO SOLO LECTURA). NO puedes ejecutar comandos.
-Tu única tarea es crear un plan detallado paso a paso.
+        return f"""IMPORTANTE: Solo responde con XML. Nunca expliques, nunca añadas texto extra.
 
-CONTEXTO DEL SISTEMA:
-{system_context}
+Ejemplo concreto para "crear landing page":
+{example}
 
-HISTORIAL DE LA SESIÓN:
-{history or "(nuevo)"}
+Ahora crea el plan para esta tarea. Mismo formato XML exacto.
 
-TAREA: {prompt}
+CONTEXTO: {system_context}
+TAREA: {prompt}"""
+    return f"""CRITICAL: Respond ONLY with XML. Never explain, never add extra text.
 
-INSTRUCCIONES:
-- Crea un plan de 2 a 6 pasos. Cada paso debe ser una acción CONCRETA.
-- Cada paso debe decir EXACTAMENTE qué comando ejecutar, qué archivo leer, o qué buscar.
-- NO incluyas pasos vagos como "analizar la situación". Sé específico.
-- NO puedes ejecutar nada. Solo produces el plan.
-- Si necesitas más información, puedes hacer preguntas con opciones.
+Concrete example for "create landing page":
+{example}
 
-RESPUESTA (solo JSON):
-Opción A — Si tienes suficiente información:
-{{"summary": "resumen corto", "steps": [
-  {{"description": "Ejecutar: comando específico", "detail": "buscar X en Y archivo"}},
-  {{"description": "Leer: ruta/al/archivo", "detail": "revisar la configuración de Z"}}
-]}}
+Now create the plan for this task. Same exact XML format.
 
-Opción B — Si necesitas aclaración:
-{{"type": "questions", "questions": [
-  {{"text": "pregunta", "options": ["opcion1", "opcion2"]}}
-]}}"""
-    return f"""You are Delux's planner (READ-ONLY mode). You CANNOT execute commands.
-Your only job is to produce a detailed step-by-step plan.
-
-SYSTEM CONTEXT:
-{system_context}
-
-SESSION HISTORY:
-{history or "(new)"}
-
-TASK: {prompt}
-
-RULES:
-- Create 2 to 6 steps. Each step must be a CONCRETE action.
-- Each step must say EXACTLY what command to run, what file to read, or what to search for.
-- No vague steps like "analyze the situation". Be specific: "Run: ls -la src/", "Search: function_name", "Read: path/file.py"
-- You CANNOT execute anything. Only produce the plan.
-- If you need more information, ask questions with predefined options.
-
-RESPONSE (JSON only):
-Option A — Sufficient info:
-{{"summary": "short summary", "steps": [
-  {{"description": "Run: specific command", "detail": "search for X in file Y"}},
-  {{"description": "Read: path/to/file", "detail": "check Z configuration"}}
-]}}
-
-Option B — Need clarification:
-{{"type": "questions", "questions": [
-  {{"text": "your question", "options": ["opt1", "opt2"]}}
-]}}"""
+CONTEXT: {system_context}
+TASK: {prompt}"""
 
 
 # Import for type hint (avoid circular import with ide.py)

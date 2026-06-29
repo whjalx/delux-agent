@@ -30,12 +30,15 @@ Searches all available knowledge sources (memory, docs, skills) for the given qu
 ## Response Examples
 
 ### Agent invokes oracle
-```json
-{"action":"run_skill","skill":"delux-oracle","args":"what do we know about the deployment pipeline","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-oracle</skill>
+<args>what do we know about the deployment pipeline</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns knowledge synthesis
-```json
+```
 {
   "delux_oracle": {
     "query": "deployment pipeline",
@@ -54,9 +57,15 @@ Searches all available knowledge sources (memory, docs, skills) for the given qu
 ```
 --- delux-oracle example ---
 USER: "what do we know about deployment"
-AGENT: {"action":"run_skill","skill":"delux-oracle","args":"deployment pipeline","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-oracle</skill>
+<args>deployment pipeline</args>
+<timeout>30</timeout>
 RESULT: {"delux_oracle": {"query": "deployment pipeline", "sources_checked": ["memory","docs"], "status": "complete", "findings": [...]}}
-NEXT ACTION: {"action":"final","message":"Deployment pipeline info found in docs/deployment.md"}
+NEXT ACTION:
+<action>final</action>
+<message>Deployment pipeline info found in docs/deployment.md</message>
 ```
 
 ## Caveats

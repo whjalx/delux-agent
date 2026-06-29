@@ -20,8 +20,11 @@ delux-search-expert <query> [path]
 ## Response Examples
 
 ### Agent invokes the skill
-```json
-{"action":"run_skill","skill":"delux-search-expert","args":"API_KEY .","timeout":30}
+```
+<action>run_skill</action>
+<skill>delux-search-expert</skill>
+<args>API_KEY .</args>
+<timeout>30</timeout>
 ```
 
 ### Skill returns result
@@ -38,9 +41,15 @@ src/config.py
 ```
 --- delux-search-expert example ---
 USER: "find where the database connection is configured"
-AGENT: {"action":"run_skill","skill":"delux-search-expert","args":"database .","timeout":30}
+AGENT:
+<action>run_skill</action>
+<skill>delux-search-expert</skill>
+<args>database .</args>
+<timeout>30</timeout>
 RESULT: src/db.py:10: database_url = "postgresql://localhost/mydb"
-NEXT ACTION: {"action":"read_file","path":"src/db.py"}
+NEXT ACTION:
+<action>read_file</action>
+<path>src/db.py</path>
 ```
 
 ## Caveats

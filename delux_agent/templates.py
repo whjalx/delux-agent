@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import re
 from dataclasses import dataclass, field
@@ -15,12 +16,84 @@ class ParsedAction:
 
 
 PARSE_STRATEGIES = [
+    "xml_action",
     "direct_json",
     "markdown_json",
     "regex_json",
     "no_action_wrap",
     "plain_text",
 ]
+
+
+def action_to_xml(action: dict) -> str:
+    """Convert an action dict to XML tag format.
+
+    Input:  {"action":"shell","command":"ls -la","timeout":60}
+    Output: <action>shell</action>
+            <command>ls -la</command>
+            <timeout>60</timeout>
+    """
+    lines = []
+    if "action" in action:
+        lines.append(f"<action>{html.escape(str(action['action']))}</action>")
+    for key, value in action.items():
+        if key == "action":
+            continue
+        if isinstance(value, (dict, list)):
+            val = json.dumps(value, ensure_ascii=False)
+            lines.append(f"<{key}>{html.escape(val)}</{key}>")
+        elif isinstance(value, bool):
+            lines.append(f"<{key}>{str(value).lower()}</{key}>")
+        else:
+            lines.append(f"<{key}>{html.escape(str(value))}</{key}>")
+    return "\n".join(lines)
+
+
+def _try_xml_action(text: str) -> dict | None:
+    """Parse <action>...</action> and param tags from model output.
+
+    Handles:
+      <action>shell</action>
+      <command>ls -la</command>
+
+    Also handles JSON-inside-tags for complex values:
+      <arguments>{"key": "value"}</arguments>
+
+    Very tolerant of extra text, whitespace, and HTML entities.
+    """
+    text = text.strip()
+    m = re.search(r"<action>\s*(.*?)\s*</action>", text, re.DOTALL)
+    if not m:
+        return None
+    action_name = m.group(1).strip()
+    if not action_name:
+        return None
+    result = {"action": action_name}
+
+    for m in re.finditer(r"<(\w+)>([\s\S]*?)</\1>", text):
+        tag = m.group(1)
+        if tag == "action":
+            continue
+        raw = m.group(2).strip()
+        val: Any = html.unescape(raw)
+        # Try number
+        try:
+            if "." in val:
+                val = float(val)
+            else:
+                val = int(val)
+        except (ValueError, TypeError):
+            if val.lower() == "true":
+                val = True
+            elif val.lower() == "false":
+                val = False
+            elif val.startswith("{") or val.startswith("["):
+                try:
+                    val = json.loads(val)
+                except json.JSONDecodeError:
+                    pass
+        result[tag] = val
+    return result
 
 
 def _try_direct_json(text: str) -> dict | None:
@@ -74,10 +147,11 @@ def parse_action(text: str, preferred_strategy: str | None = None) -> tuple[Pars
         strategies.remove(preferred_strategy)
         strategies.insert(0, preferred_strategy)
 
-    last_error = ""
     for strategy in strategies:
         obj = None
-        if strategy == "direct_json":
+        if strategy == "xml_action":
+            obj = _try_xml_action(text)
+        elif strategy == "direct_json":
             obj = _try_direct_json(text)
         elif strategy == "markdown_json":
             obj = _try_markdown_json(text)
@@ -177,40 +251,42 @@ def get_action_format_instructions(model_name: str, root: Path) -> str:
     if t.system_suffix:
         return t.system_suffix
     base = (
-        "\nAllowed actions:\n"
-        '{"action":"shell","command":"fish command","timeout":60}\n'
-        '{"action":"read_file","path":"relative/path"}\n'
-        '{"action":"write_file","path":"relative/path","content":"..."}\n'
-        '{"action":"append_file","path":"relative/path","content":"..."}\n'
-        '{"action":"search_files","query":"text"}\n'
-        '{"action":"run_skill","skill":"skill-slug","args":"arg1 arg2 ...","timeout":30}\n'
-        '{"action":"create_skill","name":"name","summary":"...","body":"..."}\n'
-        '{"action":"call_mcp","server":"server-name","tool":"tool-name","arguments":{...}}\n'
-        '{"action":"remember","note":"..."}\n'
-        '{"action":"browser_navigate","url":"https://example.com"}\n'
-        '{"action":"browser_click","selector":"a.link"}\n'
-        '{"action":"browser_type","selector":"input","text":"query"}\n'
-        '{"action":"browser_scroll","direction":"down","amount":500}\n'
-        '{"action":"browser_snapshot"}\n'
-        '{"action":"browser_screenshot"}\n'
-        '{"action":"browser_extract"}\n'
-        '{"action":"browser_back"}\n'
-        '{"action":"browser_close"}\n'
-        '{"action":"vision_analyze","image_path":"/path/to/img.png","prompt":"describe"}\n'
-        '{"action":"delegate_task","task":"sub-task","max_steps":12,"timeout":120}\n'
-        '{"action":"cron_add","name":"job","expression":"0 * * * *","command":"cmd"}\n'
-        '{"action":"cron_remove","job_id":1}\n'
-        '{"action":"cron_list"}\n'
-        '{"action":"cron_run","job_id":1}\n'
-        '{"action":"kanban_add","title":"task","description":"desc"}\n'
-        '{"action":"kanban_list"}\n'
-        '{"action":"kanban_move","card_id":1,"status":"done"}\n'
-        '{"action":"kanban_show","card_id":1}\n'
-        '{"action":"kanban_delete","card_id":1}\n'
-        '{"action":"computer_screenshot"}\n'
-        '{"action":"computer_click","x":100,"y":200}\n'
-        '{"action":"computer_type","text":"hello"}\n'
-        '{"action":"computer_keypress","key":"Return"}\n'
-        '{"action":"final","message":"..."}\n'
+        "\nAllowed actions (XML format):\n"
+        "<action>shell</action>\n<command>command</command>\n<timeout>60</timeout>\n"
+        "<action>read_file</action>\n<path>relative/path</path>\n"
+        "<action>write_file</action>\n<path>relative/path</path>\n<content>...</content>\n"
+        "<action>append_file</action>\n<path>relative/path</path>\n<content>...</content>\n"
+        "<action>search_files</action>\n<query>text</query>\n"
+        "<action>run_skill</action>\n<skill>skill-slug</skill>\n<args>arg1 arg2 ...</args>\n<timeout>30</timeout>\n"
+        "<action>create_skill</action>\n<name>name</name>\n<summary>...</summary>\n<body>...</body>\n"
+        "<action>call_mcp</action>\n<server>server-name</server>\n<tool>tool-name</tool>\n<arguments>{\"key\": \"value\"}</arguments>\n"
+        "<action>remember</action>\n<note>...</note>\n"
+        "<action>browser_navigate</action>\n<url>https://example.com</url>\n"
+        "<action>browser_click</action>\n<selector>a.link</selector>\n"
+        "<action>browser_type</action>\n<selector>input</selector>\n<text>query</text>\n"
+        "<action>browser_scroll</action>\n<direction>down</direction>\n<amount>500</amount>\n"
+        "<action>browser_snapshot</action>\n"
+        "<action>browser_screenshot</action>\n"
+        "<action>browser_extract</action>\n"
+        "<action>browser_back</action>\n"
+        "<action>browser_close</action>\n"
+        "<action>vision_analyze</action>\n<image_path>/path/to/img.png</image_path>\n<prompt>describe</prompt>\n"
+        "<action>delegate_task</action>\n<task>sub-task</task>\n<max_steps>12</max_steps>\n<timeout>120</timeout>\n"
+        "<action>cron_add</action>\n<name>job</name>\n<expression>0 * * * *</expression>\n<command>cmd</command>\n"
+        "<action>cron_remove</action>\n<job_id>1</job_id>\n"
+        "<action>cron_list</action>\n"
+        "<action>cron_run</action>\n<job_id>1</job_id>\n"
+        "<action>kanban_add</action>\n<title>task</title>\n<description>desc</description>\n"
+        "<action>kanban_list</action>\n"
+        "<action>kanban_move</action>\n<card_id>1</card_id>\n<status>done</status>\n"
+        "<action>kanban_show</action>\n<card_id>1</card_id>\n"
+        "<action>kanban_delete</action>\n<card_id>1</card_id>\n"
+        "<action>computer_screenshot</action>\n"
+        "<action>computer_click</action>\n<x>100</x>\n<y>200</y>\n"
+        "<action>computer_type</action>\n<text>hello</text>\n"
+        "<action>computer_keypress</action>\n<key>Return</key>\n"
+        "<action>set_tasks</action>\n<tasks>[\"task 1\", \"task 2\"]</tasks>\n"
+        "<action>task_done</action>\n<task>task 1</task>\n"
+        "<action>final</action>\n<summary>What was requested vs what was done</summary>\n<message>...</message>\n"
     )
     return base
