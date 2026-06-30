@@ -814,27 +814,33 @@ def _import_dataset_rag(root: Path) -> None:
                             break
                         except Exception:
                             continue
-                # Re-check after install
                 try:
                     subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, timeout=10)
                     lfs_ok = True
                 except FileNotFoundError:
-                    pass
+                    print(f"  {YELLOW}Could not install git-lfs automatically. Install it manually: "
+                          f"https://git-lfs.com{RESET}")
 
-            if lfs_ok:
-                try:
-                    print(f"  {YELLOW}Downloading RAG dataset from git-lfs...{RESET}")
-                    subprocess.run(
-                        ["git", "lfs", "pull", "--include", "rag-raw/dataset-rag.jsonl.gz"],
-                        cwd=project_root, capture_output=True, text=True, timeout=300,
-                    )
+            if lfs_ok and prebuilt.stat().st_size < 1000:  # still a pointer (<1KB)
+                print(f"  {YELLOW}Downloading RAG dataset (251 MB via git-lfs)...{RESET}")
+                result = subprocess.run(
+                    ["git", "lfs", "pull", "--include", "rag-raw/dataset-rag.jsonl.gz"],
+                    cwd=project_root, capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    print(f"  {YELLOW}git-lfs pull failed: {result.stderr.strip()[:200]}{RESET}")
+                else:
                     with open(prebuilt, "rb") as f:
                         magic = f.read(2)
                         real_gzip = (magic == b'\x1f\x8b')
-                except Exception as exc:
-                    print(f"  {YELLOW}git-lfs pull failed: {exc}{RESET}")
+                    if not real_gzip:
+                        print(f"  {YELLOW}File still not a valid gzip after pull (size: {prebuilt.stat().st_size} bytes).{RESET}")
 
-        if real_gzip:
+        if prebuilt.stat().st_size < 1000:
+            print(f"  {DIM}RAG dataset not available. Install git-lfs and run: "
+                  f"cd {project_root} && git lfs pull{RESET}")
+            print(f"  {DIM}Or skip dataset RAG (agent will run without few-shot examples).{RESET}")
+        elif real_gzip:
             print(f"  {YELLOW}Installing pre-built trajectory RAG...{RESET}")
             try:
                 dst = root / "dataset-rag"
