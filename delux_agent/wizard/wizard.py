@@ -463,9 +463,9 @@ def _generate_few_shot_examples(root: Path) -> None:
 def _install_default_skills(root: Path) -> None:
     skills_dir = root / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
+    import delux_agent
     dest = skills_dir / "SKILL_TEMPLATE.md"
     if not dest.exists():
-        import delux_agent
         src = Path(delux_agent.__file__).parent / "skills" / "SKILL_TEMPLATE.md"
         if src.exists():
             import shutil
