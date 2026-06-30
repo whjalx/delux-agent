@@ -758,6 +758,18 @@ def _configure_plan_model(root: Path) -> None:
         print(f"  {GREEN}Plan mode model configured.{RESET}")
 
 
+# Git LFS auto-install commands per platform
+# (detector_binary, install_command)
+_GIT_LFS_INSTALL: list[tuple[str, str]] = [
+    ("dnf", "sudo dnf install -y git-lfs"),
+    ("apt-get", "sudo apt-get install -y git-lfs"),
+    ("apt", "sudo apt-get install -y git-lfs"),
+    ("pacman", "sudo pacman -S --noconfirm git-lfs"),
+    ("zypper", "sudo zypper install -y git-lfs"),
+    ("brew", "brew install git-lfs"),
+]
+
+
 def _import_dataset_rag(root: Path) -> None:
     project_root = Path(__file__).resolve().parent.parent.parent
 
@@ -776,17 +788,66 @@ def _import_dataset_rag(root: Path) -> None:
 
     if prebuilt.exists():
         import shutil, gzip, json
-        print(f"\n  {YELLOW}Installing pre-built trajectory RAG...{RESET}")
+
+        # Validate the file is a real gzip (not a git-lfs pointer)
+        real_gzip = False
         try:
-            dst = root / "dataset-rag"
-            dst.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(prebuilt), str(dst / "entries.jsonl.gz"))
-            with gzip.open(prebuilt, "rb") as f:
-                count = sum(1 for _ in f)
-            (dst / "manifest.json").write_text(json.dumps({"prebuilt": count}, ensure_ascii=False), encoding="utf-8")
-            print(f"  {GREEN}Installed {count} pre-built trajectories.{RESET}")
-        except Exception as exc:
-            print(f"  {YELLOW}Pre-built RAG install failed: {exc}{RESET}")
+            with open(prebuilt, "rb") as f:
+                magic = f.read(2)
+                real_gzip = (magic == b'\x1f\x8b')
+        except Exception:
+            pass
+
+        if not real_gzip:
+            # Auto-install git-lfs and pull the dataset
+            import subprocess, shutil
+            lfs_ok = False
+            try:
+                subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, timeout=10)
+                lfs_ok = True
+            except FileNotFoundError:
+                print(f"  {YELLOW}git-lfs not found. Installing...{RESET}")
+                for detector, install_cmd in _GIT_LFS_INSTALL:
+                    if shutil.which(detector):
+                        try:
+                            subprocess.run(install_cmd, shell=True, capture_output=True, text=True, timeout=60)
+                            break
+                        except Exception:
+                            continue
+                # Re-check after install
+                try:
+                    subprocess.run(["git", "lfs", "version"], capture_output=True, text=True, timeout=10)
+                    lfs_ok = True
+                except FileNotFoundError:
+                    pass
+
+            if lfs_ok:
+                try:
+                    print(f"  {YELLOW}Downloading RAG dataset from git-lfs...{RESET}")
+                    subprocess.run(
+                        ["git", "lfs", "pull", "--include", "rag-raw/dataset-rag.jsonl.gz"],
+                        cwd=project_root, capture_output=True, text=True, timeout=300,
+                    )
+                    with open(prebuilt, "rb") as f:
+                        magic = f.read(2)
+                        real_gzip = (magic == b'\x1f\x8b')
+                except Exception as exc:
+                    print(f"  {YELLOW}git-lfs pull failed: {exc}{RESET}")
+
+        if real_gzip:
+            print(f"  {YELLOW}Installing pre-built trajectory RAG...{RESET}")
+            try:
+                dst = root / "dataset-rag"
+                dst.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(prebuilt), str(dst / "entries.jsonl.gz"))
+                with gzip.open(prebuilt, "rb") as f:
+                    count = sum(1 for _ in f)
+                (dst / "manifest.json").write_text(json.dumps({"prebuilt": count}, ensure_ascii=False), encoding="utf-8")
+                print(f"  {GREEN}Installed {count} pre-built trajectories.{RESET}")
+            except Exception as exc:
+                print(f"  {YELLOW}Pre-built RAG install failed: {exc}{RESET}")
+        else:
+            print(f"  {DIM}RAG dataset not available (git-lfs pull failed or no gzip file).{RESET}")
         return
 
     ds_paths = [

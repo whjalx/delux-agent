@@ -2,7 +2,7 @@
 
 Shell-first AI assistant. Autonomous terminal agent with skills, memory, MCP support, and an interactive TUI.
 
-- **Zero third-party dependencies** — Python standard library only (TUI requires `textual`)
+- **Zero third-party dependencies** — Python standard library only (TUI requires `textual`, RAG dataset requires `git-lfs`)
 - **Multi-shell** — fish, bash, zsh support
 - **Multi-platform** — Linux, macOS, Windows (WSL/PowerShell)
 - **MCP support** — Connect to external tool servers
@@ -33,7 +33,7 @@ powershell -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.c
 
 ### Manual (any platform)
 
-Requires **Python 3.11+**.
+Requires **Python 3.11+**. For the RAG trajectory dataset, **git-lfs** is required (auto-installed by the setup wizard).
 
 ```bash
 # Create and activate a virtual environment
@@ -58,6 +58,7 @@ The wizard guides you through:
 - Testing the connection
 - Detecting small models (3B/4B/Phi/Gemma) and enabling optimizations
 - Configuring optional contextualizer and training
+- Installing pre-built trajectory dataset (auto-installs `git-lfs` if needed)
 
 ### Supported Providers
 

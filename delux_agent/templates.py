@@ -287,6 +287,7 @@ def get_action_format_instructions(model_name: str, root: Path) -> str:
         "<action>computer_keypress</action>\n<key>Return</key>\n"
         "<action>set_tasks</action>\n<tasks>[\"task 1\", \"task 2\"]</tasks>\n"
         "<action>task_done</action>\n<task>task 1</task>\n"
+        "<action>record_skill</action>\n<name>skill-slug</name>\n<summary>what it does</summary>\n<steps>1. step\\n2. step</steps>\n"
         "<action>final</action>\n<summary>What was requested vs what was done</summary>\n<message>...</message>\n"
     )
     return base

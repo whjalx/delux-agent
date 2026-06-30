@@ -385,6 +385,13 @@ class DatasetRAG:
         if not self.entries_gz.exists():
             return
         import gzip, shutil
+        # Validate gzip magic bytes before trying to decompress
+        try:
+            with open(self.entries_gz, "rb") as f:
+                if f.read(2) != b'\x1f\x8b':
+                    return
+        except Exception:
+            return
         try:
             with gzip.open(self.entries_gz, "rb") as src, \
                  open(self.entries_path, "wb") as dst:

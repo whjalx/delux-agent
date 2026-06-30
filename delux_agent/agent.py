@@ -17,7 +17,7 @@ from .small_model import build_small_model_prompt
 from .store import ensure_workspace, load_docs, load_memory, load_skills
 from .tools import (
     _check_builtin_write, append_file, call_mcp_tool, create_skill, discover_mcp_tools,
-    edit_file, execute_command_secure, move_file, patch_file, read_file, remember,
+    edit_file, execute_command_secure, move_file, patch_file, read_file, record_skill, remember,
     run_shell, run_skill, search_files, search_web, ToolResult, verify_file,
     view_file_paged, write_file,
 )
@@ -61,6 +61,8 @@ Smart Patterns:
 - ON errors: try a different approach. If you've tried 3+ approaches, use search_web
 - AFTER a success: save the solution with save_experience so you never have to solve it again
 - BEFORE final: confirm all requirements are met, verify the solution works, and no loose ends
+- FILE READING: for large files use view_file with line_start/line_end. view_file shows structure summary. Use read_file only for small files.
+- SKILL CREATION: when you discover a reusable pattern, save it with record_skill for future use
 
 SKILL ACCESS:
 - Skills are listed as "name: summary → path". This is a brief reference only.
@@ -197,6 +199,12 @@ Allowed actions (return exactly one action in XML):
 
 <action>remember</action>
 <note>...</note>
+
+<action>record_skill</action>
+<name>skill-slug</name>
+<summary>what it does</summary>
+<steps>1. step one
+2. step two</steps>
 
 <action>skip_step</action>
 <step_id>1</step_id>
@@ -452,6 +460,12 @@ Acciones permitidas (devuelve exactamente una acción en XML):
 
 <action>remember</action>
 <note>...</note>
+
+<action>record_skill</action>
+<name>skill-slug</name>
+<summary>qué hace</summary>
+<steps>1. paso uno
+2. paso dos</steps>
 
 <action>skip_step</action>
 <step_id>1</step_id>
@@ -1792,6 +1806,13 @@ Respond ONLY with your diagnosis and the next action to try, in XML format:
             )
         elif kind == "remember":
             result = remember(str(action.get("note", "")), root)
+        elif kind == "record_skill":
+            result = record_skill(
+                str(action.get("name", "skill")),
+                str(action.get("summary", "")),
+                str(action.get("steps", "")),
+                root,
+            )
         elif kind == "search_web":
             output = search_web(
                 str(action.get("query", "")),

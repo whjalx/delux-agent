@@ -293,83 +293,114 @@ def get_session(chat_id: str) -> GatewaySession:
 
 # ── Beautiful Report Builder ──
 
+_ACTION_ICONS = {
+    "shell": "\U0001f4bb",
+    "shell_secure": "\U0001f6e1\ufe0f",
+    "write_file": "\U0001f4dd",
+    "edit_file": "\u270f\ufe0f",
+    "patch_file": "\u270f\ufe0f",
+    "read_file": "\U0001f4d6",
+    "view_file": "\U0001f4d6",
+    "verify_file": "\U0001f50d",
+    "append_file": "\U0001f4dd",
+    "move_file": "\U0001f4c2",
+    "search_files": "\U0001f50e",
+    "search_web": "\U0001f310",
+    "run_skill": "\U0001f680",
+    "create_skill": "\U0001f4a1",
+    "record_skill": "\U0001f4cb",
+    "rag_query": "\U0001f50e",
+    "rag_index": "\U0001f4da",
+    "save_experience": "\U0001f4be",
+    "remember": "\U0001f4be",
+    "call_mcp": "\U0001f916",
+    "browser_navigate": "\U0001f310",
+    "browser_click": "\U0001f446",
+    "browser_type": "\U0001f5a5\ufe0f",
+    "browser_snapshot": "\U0001f4f7",
+    "browser_scroll": "\U0001f5c3\ufe0f",
+    "browser_screenshot": "\U0001f4f7",
+    "browser_extract": "\U0001f4cb",
+    "set_tasks": "\U0001f4cb",
+    "task_done": "\u2705",
+    "final": "\u2705",
+    "skip_step": "\u23ed\ufe0f",
+    "cron_add": "\u23f0",
+    "cron_list": "\U0001f4cb",
+    "cron_remove": "\u274c",
+    "cron_run": "\u25b6\ufe0f",
+    "kanban_add": "\U0001f4cb",
+    "kanban_list": "\U0001f4cb",
+    "kanban_move": "\U0001f4c2",
+    "kanban_delete": "\u274c",
+    "computer_screenshot": "\U0001f4f7",
+    "computer_click": "\U0001f446",
+    "computer_type": "\U0001f5a5\ufe0f",
+    "computer_keypress": "\u2328\ufe0f",
+}
+
+
 def _fmt_action(action: dict) -> str:
     kind = action.get("action", "")
+    icon = _ACTION_ICONS.get(kind, "\u27a1\ufe0f")
     if kind == "shell":
         cmd = str(action.get("command", ""))[:300]
-        return f'<code>$ {escape_html(cmd)}</code>'
-    elif kind == "shell_secure":
+        return f'{icon} <code>$ {escape_html(cmd)}</code>'
+    if kind == "shell_secure":
         cmd = str(action.get("command", ""))[:300]
-        return f'<code>$ {escape_html(cmd)}</code> <i>(safe)</i>'
-    elif kind == "write_file":
+        return f'{icon} <code>$ {escape_html(cmd)}</code> <i>(safe)</i>'
+    if kind in ("write_file", "append_file"):
         path = str(action.get("path", ""))
         content = str(action.get("content", ""))
         lines = content.count("\n") + 1 if content else 0
-        return f'\U0001f4dd <code>{escape_html(path)}</code> <i>({lines} lines)</i>'
-    elif kind == "edit_file":
+        return f'{icon} <code>{escape_html(path)}</code> <i>({lines} lines)</i>'
+    if kind == "edit_file":
         path = str(action.get("path", ""))
         old = str(action.get("old_str", ""))
         new = str(action.get("new_str", ""))
         delta = new.count("\n") - old.count("\n")
         sign = "+" if delta >= 0 else ""
-        return f'\u270f\ufe0f edit <code>{escape_html(path)}</code> <i>({sign}{delta} lines)</i>'
-    elif kind == "patch_file":
-        path = str(action.get("path", ""))
-        return f'\u270f\ufe0f patch <code>{escape_html(path)}</code>'
-    elif kind in ("read_file", "view_file"):
-        return f'\U0001f4d6 <code>{escape_html(str(action.get("path", "")))}</code>'
-    elif kind == "verify_file":
-        return f'\U0001f50d verify <code>{escape_html(str(action.get("path", "")))}</code>'
-    elif kind == "append_file":
-        return f'\U0001f4dd append <code>{escape_html(str(action.get("path", "")))}</code>'
-    elif kind == "move_file":
+        return f'{icon} <code>{escape_html(path)}</code> <i>({sign}{delta} lines)</i>'
+    if kind == "patch_file":
+        return f'{icon} <code>{escape_html(str(action.get("path", "")))}</code>'
+    if kind in ("read_file", "view_file", "verify_file"):
+        return f'{icon} <code>{escape_html(str(action.get("path", "")))}</code>'
+    if kind == "move_file":
         src = str(action.get("src", ""))
         dst = str(action.get("dst", ""))
-        return f'\U0001f4c2 mv <code>{escape_html(src)}</code> \u2192 <code>{escape_html(dst)}</code>'
-    elif kind == "search_files":
-        return f'\U0001f50d search <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
-    elif kind == "search_web":
-        return f'\U0001f30d web <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
-    elif kind == "run_skill":
+        return f'{icon} <code>{escape_html(src)}</code> \u2192 <code>{escape_html(dst)}</code>'
+    if kind in ("search_files", "rag_query"):
+        return f'{icon} <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
+    if kind == "search_web":
+        return f'{icon} <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
+    if kind == "run_skill":
         skill = str(action.get("skill", ""))
         args = str(action.get("args", ""))[:80]
-        s = f'\U0001f680 skill <code>{escape_html(skill)}</code>'
+        s = f'{icon} <code>{escape_html(skill)}</code>'
         if args:
-            s += f' <code>{escape_html(args)}</code>'
+            s += f' <i>{escape_html(args)}</i>'
         return s
-    elif kind == "create_skill":
-        return f'\U0001f4a1 new skill <code>{escape_html(str(action.get("name", "")))}</code>'
-    elif kind == "rag_query":
-        return f'\U0001f50e RAG <code>{escape_html(str(action.get("query", ""))[:100])}</code>'
-    elif kind == "rag_index":
-        return f'\U0001f4da index <code>{escape_html(str(action.get("path", "")))}</code>'
-    elif kind == "save_experience":
-        return '\U0001f4be saved experience'
-    elif kind == "remember":
-        return '\U0001f4be remembered'
-    elif kind == "call_mcp":
+    if kind in ("create_skill", "record_skill"):
+        return f'{icon} <code>{escape_html(str(action.get("name", "")))}</code>'
+    if kind == "call_mcp":
         server = str(action.get("server", ""))
         tool = str(action.get("tool", ""))
-        return f'\U0001f916 MCP {escape_html(server)}.{escape_html(tool)}'
-    elif kind == "set_tasks":
+        return f'{icon} {escape_html(server)}.<code>{escape_html(tool)}</code>'
+    if kind == "set_tasks":
         raw = action.get("tasks", "")
-        if isinstance(raw, list):
-            n = len(raw)
-        else:
-            n = raw.count(",") + 1 if raw else 0
-        return f'\U0001f4cb set {n} tasks'
-    elif kind == "task_done":
+        n = len(raw) if isinstance(raw, list) else (raw.count(",") + 1 if raw else 0)
+        return f'{icon} {n} tasks'
+    if kind == "task_done":
         desc = str(action.get("task", ""))[:80]
-        return f'\u2705 done <code>{escape_html(desc)}</code>'
-    elif kind == "final":
-        msg = str(action.get("message", ""))[:200]
-        return f'\u2705 {escape_html(msg)}'
-    elif kind == "skip_step":
+        return f'{icon} <code>{escape_html(desc)}</code>'
+    if kind == "final":
+        return f'{icon} {escape_html(str(action.get("message", ""))[:200])}'
+    if kind == "skip_step":
         sid = action.get("step_id", "")
         reason = str(action.get("reason", ""))[:100]
-        return f'\u23ed\ufe0f skip step {sid}: {reason}'
-    else:
-        return f'\u27a1\ufe0f {kind}'
+        return f'{icon} step {sid}: <i>{escape_html(reason)}</i>'
+    name = str(action.get("name", "") or action.get("path", "") or action.get("command", "") or kind)
+    return f'{icon} <code>{escape_html(name[:100])}</code>'
 
 
 def _fmt_result(result: str, max_len: int = 400) -> str:
@@ -379,7 +410,7 @@ def _fmt_result(result: str, max_len: int = 400) -> str:
         detail = result[8:].strip()
         if detail:
             return f'\u2705 <code>{escape_html(truncate(detail, max_len))}</code>'
-        return '\u2705'
+        return '\u2705 <i>ok</i>'
     if result.startswith("ERROR:"):
         detail = result[6:].strip()
         return f'\u274c <code>{escape_html(truncate(detail, max_len))}</code>'
@@ -425,8 +456,10 @@ class GatewayEventHandler:
         self._task_prompt = prompt
         self._start_time = time.time()
         html = (
-            f"<b>\U0001f680 Task</b>: <code>{escape_html(prompt[:300])}</code>\n"
-            f"\U0001f914 Thinking..."
+            f"<b>\U0001f916 Delux Agent</b>  \u00b7  "
+            f"<i>{escape_html(self.model_name)}</i>\n"
+            f"<code>{escape_html(prompt[:300])}</code>\n"
+            f"\n<i>\u23f3 Thinking...</i>"
         )
         mid = send_html(self.token, self.chat_id, html)
         if mid:
@@ -437,12 +470,13 @@ class GatewayEventHandler:
         total_len = 0
         elapsed = time.time() - self._start_time
         time_str = fmt_time(elapsed)
+        sep = "\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"
 
-        # ── Plan section (only if plan exists) ──
+        # ── Plan section ──
         if self._has_plan:
             plan_lines = []
             if self._plan_summary:
-                plan_lines.append(f"\U0001f4cb <b>Plan</b>: {escape_html(self._plan_summary)}")
+                plan_lines.append(f"\U0001f4cb <b>Plan:</b> {escape_html(self._plan_summary)}")
             if self._plan_steps:
                 for s in self._plan_steps:
                     icon = {"completed": "\u2705", "active": "\u23f3", "pending": "\u2b1c", "failed": "\u274c"}.get(
@@ -471,7 +505,7 @@ class GatewayEventHandler:
             action_parts = []
             for i, (act, res) in enumerate(keeps_actions):
                 step_num = i + 1
-                action_parts.append(f"\u2500\u2500 {step_num} \u2500\u2500")
+                action_parts.append(f"\u2500\u2500 <b>{step_num}</b> \u2500\u2500")
                 action_parts.append(_fmt_action(act))
                 if res:
                     fmt = _fmt_result(res, 180)
@@ -487,8 +521,7 @@ class GatewayEventHandler:
         # ── Current action ──
         if self._current_action:
             curr_parts = []
-            step_label = f"\u2500\u2500 {self._step} (current) \u2500\u2500"
-            curr_parts.append(step_label)
+            curr_parts.append(f"\u2500\u2500 <b>{self._step}</b> \u2500\u2500 <i>running...</i>")
             curr_parts.append(_fmt_action(self._current_action))
             # Diff preview
             if self._current_diff:
@@ -509,7 +542,7 @@ class GatewayEventHandler:
             if self._shell_buffer:
                 shell = self._shell_buffer
                 if self._shell_truncated:
-                    shell = f"... ({fmt_bytes(len(self._shell_buffer))} total)\n" + shell[-600:]
+                    shell = f"\u23f3 <i>{fmt_bytes(len(self._shell_buffer))} total, showing last 600 B</i>\n" + shell[-600:]
                 curr_parts.append(f"<pre>{escape_html(truncate(shell, 800))}</pre>")
             # Action result
             if self._current_action_result:
@@ -520,36 +553,36 @@ class GatewayEventHandler:
             parts.append(curr_text)
             total_len += len(curr_text)
 
-        # ── Contextualizing hint ──
+        # ── Contextualizing ──
         if self._contextualizing:
-            ctx_line = "\U0001f9e0 Optimizing context..."
-            if total_len + len(ctx_line) <= MAX_REPORT_LENGTH:
-                parts.append(ctx_line)
-                total_len += len(ctx_line)
+            ctx = "\U0001f9e0 <i>Optimizing context...</i>"
+            if total_len + len(ctx) <= MAX_REPORT_LENGTH:
+                parts.append(ctx)
+                total_len += len(ctx)
 
         # ── Final answer ──
         if self._final_answer:
             final_block = []
-            final_block.append(f"\n<b>\u2728 Result</b>:")
+            final_block.append(f"{sep}\n<b>\u2728 Result</b>{sep}")
             final_block.append(f"{escape_html(truncate(self._final_answer, 1500))}")
             final_text = "\n".join(final_block)
             if total_len + len(final_text) <= MAX_REPORT_LENGTH:
                 parts.append(final_text)
             else:
-                parts.append(f"\n<b>\u2728 Result</b>: <i>(truncated)</i>")
+                parts.append(f"{sep}\n<b>\u2728 Result</b> <i>(truncated)</i>{sep}")
                 parts.append(escape_html(self._final_answer[:200]))
 
         # ── Footer ──
         total_steps = len(self._actions) + (1 if self._current_action else 0)
-        footer = (
-            f"\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n"
-            f"<i>{escape_html(self.model_name)}</i>"
-        )
+        footer_parts = [sep[1:]]
+        meta = f"<i>{escape_html(self.model_name)}</i>"
         if total_steps:
-            footer += f"  \u00b7  {total_steps} step{'s' if total_steps != 1 else ''}"
-        footer += f"  \u00b7  {time_str}"
-        if total_len + len(footer) <= MAX_REPORT_LENGTH:
-            parts.append(footer)
+            meta += f"  \u00b7  {total_steps} step{'s' if total_steps != 1 else ''}"
+        meta += f"  \u00b7  {time_str}"
+        footer_parts.append(meta)
+        footer_text = "\n".join(footer_parts)
+        if total_len + len(footer_text) <= MAX_REPORT_LENGTH:
+            parts.append(footer_text)
 
         return "\n".join(parts)
 
@@ -557,10 +590,10 @@ class GatewayEventHandler:
         if not self._report_msg_id:
             return
         html = self._build_report()
-        # Auto-show Cancel button during execution (if no explicit keyboard)
+        # Auto-show Cancel button during execution
         if reply_markup is None and self._current_action and not self._final_answer:
             reply_markup = build_inline_keyboard([
-                [("\u274c Cancel", "cancel")],
+                [("\u23f9\ufe0f Cancel", "cancel")],
             ])
         try:
             edit_html(self.token, self.chat_id, self._report_msg_id, html, reply_markup=reply_markup)
@@ -625,9 +658,9 @@ class GatewayEventHandler:
             self._shell_buffer = ""
             self._shell_truncated = False
             self._current_diff = []
-            # Remove keyboard on final
+            # Show post-completion actions
             keyboard = build_inline_keyboard([
-                [("\U0001f504 Retry", "retry"), ("\u270f\ufe0f Refine", "refine")],
+                [("\U0001f504 Retry", "retry"), ("\u270f\ufe0f Refine", "refine"), ("\U0001f9f9 New", "new")],
             ])
             self._refresh(reply_markup=keyboard)
 
@@ -1384,7 +1417,12 @@ def run_gateway(
                     answer_callback_query(tg.token, cb_id,
                         "Reply to this message with your refined request.")
                     delete_message(tg.token, cb_chat_id, cb_msg_id)
-                    # The user will send a new message — the gateway will process it normally
+
+                elif data == "new":
+                    answer_callback_query(tg.token, cb_id, "Starting fresh session.")
+                    session.history.clear()
+                    session.session_summary = ""
+                    send_message(tg.token, cb_chat_id, "\U0001f9f9 Session reset. Send a new task.")
 
                 else:
                     answer_callback_query(tg.token, cb_id)

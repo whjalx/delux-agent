@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -126,10 +127,37 @@ def _detect_exec_lang(skill_dir: Path) -> str:
     return ""
 
 
+def sync_builtin_skills(builtin_dir: Path, user_dir: Path) -> None:
+    """Copy built-in skill files to user skills dir so view_file skills/<name>/SKILL.md works."""
+    if not builtin_dir.exists() or not user_dir.exists():
+        return
+    for skill_dir in builtin_dir.iterdir():
+        if not skill_dir.is_dir():
+            continue
+        src_md = skill_dir / "SKILL.md"
+        if not src_md.exists():
+            continue
+        target_dir = user_dir / skill_dir.name
+        target_dir.mkdir(parents=True, exist_ok=True)
+        dst_md = target_dir / "SKILL.md"
+        if not dst_md.exists():
+            shutil.copy2(src_md, dst_md)
+        for src_exec in skill_dir.glob("exec.*"):
+            dst_exec = target_dir / src_exec.name
+            if not dst_exec.exists():
+                shutil.copy2(src_exec, dst_exec)
+                if src_exec.suffix in (".py", ".sh", ".bash", ".fish"):
+                    dst_exec.chmod(0o755)
+
+
 def load_skills(*skills_dirs: Path) -> list[Skill]:
     seen: set[str] = set()
     builtin_skills: list[Skill] = []
     user_skills: list[Skill] = []
+
+    # Sync built-in skills to user dir on first access
+    if len(skills_dirs) >= 2 and skills_dirs[0].exists():
+        sync_builtin_skills(skills_dirs[0], skills_dirs[1])
 
     # User dirs (index >= 1) processed first — they have priority over built-in
     for skills_dir in skills_dirs[1:]:

@@ -436,6 +436,12 @@ def read_file(path: str, base: Path) -> ToolResult:
     content = _read_with_fallback(target, max_size=30000)
     if not content and size > 0:
         return ToolResult(False, f"Failed to decode {path} ({_fmt_size(size)}). File may be binary.")
+    total_lines = content.count("\n") if content else 0
+    if total_lines > 300:
+        header = f"{symlink}{path}{size_info} ({total_lines} lines — use view_file with line ranges for large files)\n{content[:5000]}"
+        if len(content) > 5000:
+            header += "\n[... truncated — file is large, use view_file for line-specific reading]"
+        return ToolResult(True, header)
     header = f"{symlink}{path}{size_info}"
     return ToolResult(True, f"{header}\n{content}")
 
@@ -714,6 +720,42 @@ _AUTO_SECTIONS = {
 }
 
 
+def record_skill(name: str, summary: str, steps: str, root: Path) -> ToolResult:
+    slug = slugify(name)
+    skills_dir = root / "skills"
+    skill_dir = skills_dir / slug
+
+    if skill_dir.exists():
+        return ToolResult(False, f"Skill `{slug}` already exists at {skill_dir}/")
+
+    skill_dir.mkdir(parents=True, exist_ok=True)
+
+    body = (
+        f"# {slug}\n\n"
+        f"## Summary\n\n{summary}\n\n"
+        f"## When To Use\n\n- Similar tasks or problems\n"
+        f"- When the user asks for this specific procedure\n\n"
+        f"## Steps\n\n{steps}\n\n"
+        f"## Response Examples\n\n"
+        f"### Agent invoca la skill\n"
+        f"```\n"
+        f"<action>run_skill</action>\n"
+        f"<skill>{slug}</skill>\n"
+        f"<args>ARGUMENTS</args>\n"
+        f"<timeout>30</timeout>\n"
+        f"```\n\n"
+        f"### Skill devuelve resultado\n"
+        f"```\n"
+        f"Status: SUCCESS\n"
+        f"Result: (output)\n"
+        f"```\n"
+    )
+
+    (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
+    upsert_skill(root / "memory" / "memory.md", slug, summary)
+    return ToolResult(True, f"Recorded skill `{slug}` at {skill_dir}/SKILL.md")
+
+
 def remember(note: str, root: Path) -> ToolResult:
     mem_path = root / "memory" / "memory.md"
     append_note(mem_path, note)
@@ -841,16 +883,67 @@ def view_file_paged(path: str, line_start: int = 1, line_end: int = 50, cwd: Pat
     if line_start > total:
         return f"ERROR: line_start ({line_start}) exceeds total lines ({total}) in {path}"
 
+    # Build structure summary for code files
+    structure_lines = []
+    if total > 50:
+        _add_structure_summary(content, structure_lines)
+
+    # Smart preview: when reading from start with default range, auto-preview large files
+    is_default_range = (line_start == 1 and line_end == 50)
+    if is_default_range and total > 200:
+        line_end = min(30, total)
+        selected = lines[:line_end]
+        result = "".join(selected).rstrip("\n")
+        if total > 30:
+            result += "\n" + "".join(lines[-10:]).rstrip("\n") if total > 40 else ""
+        structure = ("\n" + "\n".join(structure_lines)) if structure_lines else ""
+        header = f"[{path} | {total} lines | {_fmt_size(target.stat().st_size)}]\n"
+        if structure_lines:
+            header += f"[Structure:{structure}]\n\n"
+        if total > 30:
+            header += f"[Showing lines 1-30 of {total} — use view_file with line_start/line_end to read specific sections]\n"
+            if total > 40:
+                header += f"[Showing lines {total-9}-{total} at end]\n"
+        return header + result
+
     selected = lines[line_start - 1 : line_end]
     result = "".join(selected).rstrip("\n")
 
-    header = f"[{path} | lines {line_start}-{line_end} of {total} | {_fmt_size(target.stat().st_size)}]\n"
+    header = f"[{path} | lines {line_start}-{line_end} of {total} | {_fmt_size(target.stat().st_size)}]"
+    if structure_lines:
+        header += "\n" + "\n".join(structure_lines)
+    header += "\n"
     if line_end < total:
         remaining = total - line_end
         header += f"[... {remaining} more lines below — use higher line_end to read]\n\n"
     if line_start > 1:
         header += f"[... {line_start - 1} lines above — use lower line_start to read]\n\n"
     return header + result
+
+
+def _add_structure_summary(content: str, out: list[str]) -> None:
+    """Extract structure items (functions, classes, headings) from file content."""
+    counts: dict[str, int] = {}
+    for line in content.splitlines():
+        stripped = line.strip()
+        if re.match(r'^\s*(?:def|async\s+def)\s+\w+', stripped):
+            counts["functions"] = counts.get("functions", 0) + 1
+        elif re.match(r'^\s*class\s+\w+', stripped):
+            counts["classes"] = counts.get("classes", 0) + 1
+        elif re.match(r'^#{1,6}\s', stripped):
+            counts["headings"] = counts.get("headings", 0) + 1
+        elif re.match(r'^\s*(?:fn|pub\s+fn|func)\s+\w+', stripped):
+            counts["functions"] = counts.get("functions", 0) + 1
+    items = []
+    if counts.get("functions"):
+        items.append(f"{counts['functions']} functions")
+    if counts.get("classes"):
+        items.append(f"{counts['classes']} classes")
+    if counts.get("headings"):
+        items.append(f"{counts['headings']} headings")
+    if items:
+        out.append(f"{', '.join(items)}")
+
 
 
 def patch_file(path: str, old_str: str, new_str: str) -> str:
