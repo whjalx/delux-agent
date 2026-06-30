@@ -249,3 +249,28 @@ def save_session_markdown(sessions_dir: Path, title: str, content: str) -> Path:
     path = sessions_dir / f"{stamp}-{name}.md"
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
     return path
+
+
+PENDING_TASK_FILENAME = "pending_task"
+
+
+def save_pending_task(root: Path, prompt: str) -> None:
+    """Save the original prompt as a pending task (execution was interrupted)."""
+    path = root / PENDING_TASK_FILENAME
+    path.write_text(prompt.strip(), encoding="utf-8")
+
+
+def clear_pending_task(root: Path) -> None:
+    """Remove pending task file (execution completed successfully)."""
+    path = root / PENDING_TASK_FILENAME
+    if path.exists():
+        path.unlink()
+
+
+def load_pending_task(root: Path) -> str | None:
+    """Return the stored prompt if a pending task exists, else None."""
+    path = root / PENDING_TASK_FILENAME
+    if path.exists():
+        content = path.read_text(encoding="utf-8").strip()
+        return content if content else None
+    return None

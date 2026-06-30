@@ -103,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("prompt", nargs="*", help="Task for the agent.")
     parser.add_argument("--cwd", default=os.getcwd(), help="Working directory for shell commands.")
     parser.add_argument("--home", default=None, help="DELUX_HOME workspace. Defaults to ~/.delux or env.")
-    parser.add_argument("--max-steps", type=int, default=12, help="Maximum autonomous action steps.")
+    parser.add_argument("--max-steps", type=int, default=90, help="Maximum autonomous action steps.")
     parser.add_argument("--quiet", action="store_true", help="Only print the final answer.")
     parser.add_argument("--init", action="store_true", help="Create memory, docs, and skills directories.")
     parser.add_argument("--context", action="store_true", help="Print loaded memory, skills, and docs context.")
@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
         ide_parser = argparse.ArgumentParser(prog="delux ide", description="Interactive terminal IDE for Delux.")
         ide_parser.add_argument("--cwd", default=os.getcwd(), help="Working directory for shell commands.")
         ide_parser.add_argument("--home", default=None, help="DELUX_HOME workspace. Defaults to ~/.delux or env.")
-        ide_parser.add_argument("--max-steps", type=int, default=12, help="Maximum autonomous action steps.")
+        ide_parser.add_argument("--max-steps", type=int, default=90, help="Maximum autonomous action steps.")
         ide_args = ide_parser.parse_args(argv[1:])
         root = Path(ide_args.home).expanduser().resolve() if ide_args.home else None
         config = load_config(root)

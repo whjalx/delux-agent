@@ -37,7 +37,8 @@ SPLASH = """\
 
 WELCOME = """\
   Bienvenido a Delux Agent.
-  Escribe /help para ver los comandos disponibles."""
+  Escribe /help para ver los comandos disponibles.
+  🔍 Mantén Shift mientras seleccionas texto para copiar."""
 
 COMMANDS: list[tuple[str, str, str]] = [
     ("/help, /?", "", "Muestra esta ayuda"),
@@ -325,6 +326,17 @@ class DeluxTUI(App):
 
         if text.startswith("/"):
             await self._handle_command(text)
+            inp.focus()
+            return
+
+        # ── Check for pending task from previous session ──
+        from ..store import load_pending_task, clear_pending_task
+        pending = load_pending_task(self._config.root)
+        if pending:
+            self._write_chat(Text(f"\n  📋 Tarea pendiente de la sesión anterior:", style="bold yellow"))
+            self._write_chat(Text(f"  ❝{pending[:200]}❞", style="dim"))
+            self._write_chat(Text(f"  ¿Continuar? (s/n): ", style="bold"))
+            self._awaiting_input = f"pending_task:{text}"
             inp.focus()
             return
 
@@ -1522,6 +1534,37 @@ NEXT ACTION: <action>final</action>
         self._awaiting_input = "compact_model"
 
     async def _handle_awaited_input(self, text: str) -> None:
+        # ── Handle pending task continuation ──
+        if isinstance(self._awaiting_input, str) and self._awaiting_input.startswith("pending_task:"):
+            original_text = self._awaiting_input[len("pending_task:"):]
+            self._awaiting_input = None
+            from ..store import load_pending_task, clear_pending_task
+            if text.lower() in ("s", "si", "y", "yes", ""):
+                pending = load_pending_task(self._config.root)
+                if pending:
+                    clear_pending_task(self._config.root)
+                    self._write_chat(Text(f"  ✅ Continuando tarea pendiente.\n", style="bold green"))
+                    self._prompt_history.append(pending)
+                    self._streaming = True
+                    inp = self.query_one("#prompt-input", Input)
+                    inp.disabled = True
+                    self._set_status("Pensando...")
+                    self._update_mode_indicator()
+                    self._stream_response(pending)
+                    return
+            clear_pending_task(self._config.root)
+            self._write_chat(Text(f"  ❌ Tarea pendiente descartada.\n", style="bold yellow"))
+            # Use the user's original text instead
+            self._prompt_history.append(original_text)
+            self._write_chat(Text(f"\n  ❯ {original_text}\n", style="bold green"))
+            self._streaming = True
+            inp = self.query_one("#prompt-input", Input)
+            inp.disabled = True
+            self._set_status("Pensando...")
+            self._update_mode_indicator()
+            self._stream_response(original_text)
+            return
+
         if self._awaiting_input == "compact_model":
             choice = text.strip()
             if not choice or choice == "1":

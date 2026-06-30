@@ -273,6 +273,7 @@ class GatewaySession:
     validator_model_idx: int | None = None
     lang: str = "en"
     max_steps: int = 90
+    _awaiting_pending: str = ""  # pending task prompt awaiting user confirmation
 
     def add_turn(self, user: str, assistant: str) -> None:
         self.history.append({"user": user, "assistant": assistant})
@@ -1442,6 +1443,21 @@ def run_gateway(
             send_action(tg.token, chat_id, "typing")
             session = get_session(chat_id)
 
+            # ── Handle pending task response ──
+            if session._awaiting_pending:
+                pending = session._awaiting_pending
+                session._awaiting_pending = ""
+                from ..store import clear_pending_task
+                delux_home = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
+                if text.lower() in ("s", "si", "y", "yes", ""):
+                    clear_pending_task(delux_home)
+                    send_message(tg.token, chat_id, "✅ Continuando tarea pendiente.")
+                    _process_prompt(tg, chat_id, pending, session)
+                else:
+                    clear_pending_task(delux_home)
+                    send_message(tg.token, chat_id, "❌ Tarea pendiente descartada. Envía tu nuevo prompt.")
+                continue
+
             # ── Command handling ──
             if text.startswith("/"):
                 result_html = handle_command(tg, chat_id, text, session)
@@ -1474,9 +1490,22 @@ def _process_prompt(tg: TelegramConfig, chat_id: str, text: str, session: Gatewa
 
     from ..agent import prepare_agent, build_session_context
     from ..config import load_config
+    from ..store import load_pending_task, clear_pending_task
     delux_home = Path(os.environ.get("DELUX_HOME", Path.home() / ".delux"))
     config = load_config(delux_home)
     cwd_path = Path(session.cwd).expanduser().resolve() if session.cwd else Path(os.getcwd()).expanduser().resolve()
+
+    # ── Check for pending task from previous session ──
+    pending = load_pending_task(delux_home)
+    if pending:
+        # Ask the user if they want to continue the pending task
+        send_message(tg.token, chat_id,
+                     f"📋 <b>Tarea pendiente detectada:</b>\n<code>{escape_html(pending[:300])}</code>\n\n"
+                     f"❓ Envía <b>s</b> para continuar, <b>n</b> para descartar.")
+        # Set a flag in the session to handle the response
+        session._awaiting_pending = pending
+        _unregister_task()
+        return
 
     session_ctx = build_session_context(
         session_summary=session.session_summary,

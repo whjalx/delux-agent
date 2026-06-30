@@ -14,7 +14,10 @@ from .experience import ExperienceDB
 from .llm import LLMError, chat_completion
 from .rag import RAGEngine
 from .small_model import build_small_model_prompt
-from .store import ensure_workspace, load_docs, load_memory, load_skills
+from .store import (
+    ensure_workspace, load_docs, load_memory, load_skills,
+    save_pending_task, clear_pending_task,
+)
 from .tools import (
     _check_builtin_write, append_file, call_mcp_tool, create_skill, discover_mcp_tools,
     edit_file, execute_command_secure, move_file, patch_file, read_file, record_skill, remember,
@@ -1253,6 +1256,7 @@ class Agent:
                     stream=False,
                 )
             except LLMError as exc:
+                save_pending_task(self.config.root, prompt)
                 return AgentRunResult(answer=str(exc), steps=steps, transcript=list(self.transcript))
 
             action = self._parse_action(response.text)
@@ -1406,6 +1410,7 @@ class Agent:
                 final_action = {"action": "final", "message": msg}
                 self._emit("action_started", step=step_num, action=final_action, plan_step=plan_step_id)
                 self._emit("final_answer", step=step_num, action=final_action, answer=msg)
+                clear_pending_task(self.config.root)
                 return AgentRunResult(answer=msg, steps=steps, transcript=list(self.transcript))
 
             if confirm_action and not confirm_action(action):
@@ -1441,6 +1446,7 @@ class Agent:
                     self._emit("plan_completed", summary=summary)
                     final_msg = {"action": "final", "message": summary}
                     self._emit("final_answer", step=step_num, action=final_msg, answer=summary)
+                    clear_pending_task(self.config.root)
                     return AgentRunResult(answer=summary, steps=steps, transcript=list(self.transcript))
 
             # ── Reject final if it claims files that were never created ──
@@ -1477,6 +1483,7 @@ class Agent:
             if action.get("action") == "final":
                 _clear_tasks()
                 self._emit("tasks_updated", tasks=[])
+                clear_pending_task(self.config.root)
                 self._emit("final_answer", step=step_num, action=action, answer=str(action.get("message", "")).strip())
                 return AgentRunResult(
                     answer=str(action.get("message", "")).strip(),
@@ -1524,6 +1531,7 @@ class Agent:
 
         # Max steps reached — if plan still in progress, force complete
         if plan_exec.in_progress and not plan_exec.plan_complete:
+            save_pending_task(self.config.root, prompt)
             summary = plan_exec.finalize_summary() + "\n\nWarning: max steps reached before plan completion."
             self._emit("plan_max_steps_reached", summary=summary)
             return AgentRunResult(answer=summary, steps=steps, transcript=list(self.transcript))
@@ -1537,6 +1545,7 @@ class Agent:
         if failed:
             summary_parts.append(f"{failed} steps had errors.")
         summary_parts.append(f"Last result: {last_result[:200]}")
+        save_pending_task(self.config.root, prompt)
         return AgentRunResult(
             answer=" | ".join(summary_parts),
             steps=steps,

@@ -838,8 +838,30 @@ def _import_dataset_rag(root: Path) -> None:
 
         if prebuilt.stat().st_size < 1000:
             # Fallback: download directly from GitHub (no git-lfs needed)
-            import urllib.request
-            _RAW_URL = "https://raw.githubusercontent.com/anomalyco/delux-agent/main/rag-raw/dataset-rag.jsonl.gz"
+            import urllib.request, subprocess
+            # Get repo info from git remote
+            _REPO = "whjalx/delux-agent"
+            _BRANCH = "main"
+            try:
+                remote_url = subprocess.run(
+                    ["git", "remote", "get-url", "origin"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if remote_url:
+                    # Extract owner/name from git URL
+                    for prefix in ("https://github.com/", "git@github.com:"):
+                        if remote_url.startswith(prefix):
+                            _REPO = remote_url[len(prefix):].removesuffix(".git")
+                            break
+                branch = subprocess.run(
+                    ["git", "branch", "--show-current"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if branch:
+                    _BRANCH = branch
+            except Exception:
+                pass
+            _RAW_URL = f"https://media.githubusercontent.com/media/{_REPO}/{_BRANCH}/rag-raw/dataset-rag.jsonl.gz"
             print(f"  {YELLOW}Downloading RAG dataset (251 MB from GitHub)...{RESET}")
             print(f"  {DIM}This may take a while depending on your connection.{RESET}")
             try:
