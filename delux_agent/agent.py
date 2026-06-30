@@ -1152,6 +1152,34 @@ class Agent:
         except Exception:
             pass
 
+        # ── User feedback examples (injected as few-shot context) ──
+        feedback_examples = ""
+        try:
+            fb_path = self.config.root / "examples" / "feedback.jsonl"
+            if fb_path.exists():
+                import json as _json
+                fb_lines: list[str] = []
+                with open(fb_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and len(fb_lines) < 3:
+                            try:
+                                data = _json.loads(line)
+                                p = data.get("prompt", "")[:200]
+                                r = data.get("response", "")[:400]
+                                if p and r:
+                                    fb_lines.append(f"USER: {p}\nAGENT: {r}")
+                            except _json.JSONDecodeError:
+                                pass
+                if fb_lines:
+                    feedback_examples = (
+                        "\n\n--- YOUR FEEDBACK EXAMPLES ---\n"
+                        "These are tasks you previously approved. Follow the same patterns.\n\n"
+                        + "\n\n".join(fb_lines)
+                    )
+        except Exception:
+            pass
+
         # Optionally run contextualizer to optimize context
         optimized_prompt = prompt
         if hasattr(self, "contextualizer") and self.contextualizer and self.contextualizer.is_enabled():
@@ -1173,6 +1201,8 @@ class Agent:
         system_content = full_system
         if dataset_few_shot:
             system_content += dataset_few_shot
+        if feedback_examples:
+            system_content += feedback_examples
 
         messages = [
             {"role": "system", "content": system_content},

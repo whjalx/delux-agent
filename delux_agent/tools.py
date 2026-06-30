@@ -1060,6 +1060,7 @@ def execute_command_secure(cmd: str, timeout: int = 15) -> str:
 
 
 def search_web(query: str, top_k: int = 5) -> str:
+    # Strategy 1: ddgr CLI (cleanest output)
     ddgr = shutil.which("ddgr")
     if ddgr:
         try:
@@ -1084,28 +1085,107 @@ def search_web(query: str, top_k: int = 5) -> str:
         except Exception:
             pass
 
-    import urllib.request
-    import urllib.parse
+    # Strategy 2: DuckDuckGo Instant Answer API (free, no key, JSON)
+    import urllib.request, urllib.parse, json
     try:
-        url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query)}"
-        req = urllib.request.Request(url, headers={"User-Agent": "Delux-Agent/1.0"})
+        api_url = f"https://api.duckduckgo.com/?q={urllib.parse.quote(query)}&format=json&no_html=1&skip_disambig=1"
+        req = urllib.request.Request(api_url, headers={"User-Agent": "Delux-Agent/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+
+        lines = [f"### Web Search Results for: '{query}'\n"]
+        count = 0
+
+        # Abstract (main answer box)
+        abstract = data.get("AbstractText", "")
+        abstract_url = data.get("AbstractURL", "")
+        if abstract:
+            lines.append(f"**{data.get('Heading', 'Summary')}**")
+            lines.append(f"   {abstract}")
+            if abstract_url:
+                lines.append(f"   URL: {abstract_url}")
+            lines.append("")
+            count += 1
+
+        # Results (organic links)
+        for item in data.get("Results", []):
+            if count >= top_k:
+                break
+            title = item.get("Text", "") or item.get("FirstURL", "")
+            url = item.get("FirstURL", "")
+            if title:
+                lines.append(f"{count+1}. **{title}**")
+                if url:
+                    lines.append(f"   URL: {url}")
+                lines.append("")
+                count += 1
+
+        # Related topics (additional results)
+        for topic in data.get("RelatedTopics", []):
+            if count >= top_k:
+                break
+            if "Topics" in topic:  # category with subtopics
+                for sub in topic["Topics"]:
+                    if count >= top_k:
+                        break
+                    title = sub.get("Text", "")
+                    url = sub.get("FirstURL", "")
+                    if title:
+                        lines.append(f"{count+1}. **{title.split(' - ')[0]}**")
+                        lines.append(f"   {title}")
+                        if url:
+                            lines.append(f"   URL: {url}")
+                        lines.append("")
+                        count += 1
+            else:
+                title = topic.get("Text", "")
+                url = topic.get("FirstURL", "")
+                if title:
+                    lines.append(f"{count+1}. **{title.split(' - ')[0]}**")
+                    lines.append(f"   {title}")
+                    if url:
+                        lines.append(f"   URL: {url}")
+                    lines.append("")
+                    count += 1
+
+        if count > 0:
+            return "\n".join(lines)
+
+        # If API returned nothing, try the "answer" field
+        answer = data.get("Answer", "")
+        answer_type = data.get("AnswerType", "")
+        if answer:
+            return f"### Answer for: '{query}'\n\n{answer}"
+
+    except Exception:
+        pass
+
+    # Strategy 3: DuckDuckGo HTML scrape (last resort)
+    try:
+        html_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(query)}"
+        req = urllib.request.Request(html_url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"})
         with urllib.request.urlopen(req, timeout=10) as resp:
             html = resp.read().decode("utf-8", errors="replace")
         import re as _re
-        results = _re.findall(
-            r'<a[^>]*href="([^"]+)"[^>]*class="result-link"[^>]*>(.*?)</a>',
-            html,
+        # Extract result links from HTML search page
+        snippets = _re.findall(
+            r'<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>(.*?)</a>.*?<a[^>]*class="result__snippet"[^>]*>(.*?)</a>',
+            html, _re.DOTALL,
         )
-        if results:
+        if snippets:
             lines = [f"### Web Results for: '{query}'\n"]
-            for i, (url_href, title) in enumerate(results[:top_k], 1):
-                lines.append(f"{i}. **{_re.sub(r'<[^>]+>', '', title).strip()}**")
-                lines.append(f"   {url_href}")
+            for i, (url_href, title, snippet) in enumerate(snippets[:top_k], 1):
+                clean_title = _re.sub(r'<[^>]+>', '', title).strip()
+                clean_snippet = _re.sub(r'<[^>]+>', '', snippet).strip()
+                lines.append(f"{i}. **{clean_title}**")
+                lines.append(f"   {clean_snippet}")
+                lines.append(f"   URL: {_re.sub(r'^//', 'https://', url_href)}")
                 lines.append("")
             return "\n".join(lines)
-        return f"ERROR: No web results for '{query}'"
-    except Exception as exc:
-        return f"ERROR: Web search failed: {exc}"
+    except Exception:
+        pass
+
+    return f"ERROR: No web results for '{query}'"
 
 
 _VERIFIERS: dict[str, list[str]] = {
@@ -1305,7 +1385,19 @@ def vision_analyze(image_path: str, prompt: str, api_base: str = "", api_key: st
 # ── Subagent tools ─────────────────────────────────────────────────────
 
 def delegate_task(task: str, root: Path, cwd: Path, max_steps: int = 90, timeout: int = 120) -> ToolResult:
-    from .subagent import spawn_subagent
+    # Try in-process subagent first (faster, same model connection)
+    from .subagent import spawn_subagent_inline, spawn_subagent
+    try:
+        result = spawn_subagent_inline(
+            task=task, root=root, cwd=cwd,
+            max_steps=max_steps, timeout=timeout,
+        )
+        if result.ok:
+            return ToolResult(True, result.output)
+        # Fallback to subprocess if inline fails
+    except Exception:
+        pass
+
     result = spawn_subagent(
         task=task,
         config_root=str(root),

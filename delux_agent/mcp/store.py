@@ -136,6 +136,14 @@ def load_cached_tools(root: Path) -> dict[str, list[MCPTool]]:
 def get_tools_for_prompt(root: Path) -> str:
     cached = load_cached_tools(root)
     if not cached:
+        # Auto-discover on first run if servers are configured
+        servers = get_enabled_servers(root)
+        if servers:
+            tools = discover_tools(root)
+            if tools:
+                cache_tools(root, tools)
+                cached = load_cached_tools(root)
+    if not cached:
         return ""
 
     lines = ["\nMCP Server Tools:"]

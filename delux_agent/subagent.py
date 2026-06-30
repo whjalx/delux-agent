@@ -19,6 +19,52 @@ class SubagentResult:
     steps: list[dict] = field(default_factory=list)
 
 
+def spawn_subagent_inline(
+    task: str,
+    root: Path,
+    cwd: Path,
+    max_steps: int = 90,
+    timeout: int = 120,
+) -> SubagentResult:
+    """Run a sub-agent in-process using the same config & model."""
+    from .agent import prepare_agent
+    from .config import load_config
+    config = load_config(root)
+
+    agent = prepare_agent(
+        config=config,
+        cwd=cwd,
+        event_handler=None,
+        prompt=task,
+        max_steps=max_steps,
+        plan_mode=False,
+        run_counter=1,
+        lang=config.lang or "en",
+    )
+
+    result_container: list[SubagentResult] = []
+
+    def _run():
+        try:
+            result = agent.run_with_result(task, verbose=False)
+            answer = result.answer or ""
+            steps = [
+                {"action": s.action, "result": str(s.result)[:300]}
+                for s in (result.steps or [])
+            ]
+            result_container.append(SubagentResult(ok=bool(answer), output=answer, steps=steps))
+        except Exception as e:
+            result_container.append(SubagentResult(False, f"Subagent error: {e}"))
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+
+    if result_container:
+        return result_container[0]
+    return SubagentResult(False, f"Subagent timed out after {timeout}s")
+
+
 def spawn_subagent(
     task: str,
     config_root: str | None = None,
