@@ -1304,7 +1304,7 @@ def vision_analyze(image_path: str, prompt: str, api_base: str = "", api_key: st
 
 # ── Subagent tools ─────────────────────────────────────────────────────
 
-def delegate_task(task: str, root: Path, cwd: Path, max_steps: int = 12, timeout: int = 120) -> ToolResult:
+def delegate_task(task: str, root: Path, cwd: Path, max_steps: int = 90, timeout: int = 120) -> ToolResult:
     from .subagent import spawn_subagent
     result = spawn_subagent(
         task=task,

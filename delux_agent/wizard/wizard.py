@@ -837,9 +837,29 @@ def _import_dataset_rag(root: Path) -> None:
                         print(f"  {YELLOW}File still not a valid gzip after pull (size: {prebuilt.stat().st_size} bytes).{RESET}")
 
         if prebuilt.stat().st_size < 1000:
-            print(f"  {DIM}RAG dataset not available. Install git-lfs and run: "
-                  f"cd {project_root} && git lfs pull{RESET}")
-            print(f"  {DIM}Or skip dataset RAG (agent will run without few-shot examples).{RESET}")
+            # Fallback: download directly from GitHub (no git-lfs needed)
+            import urllib.request
+            _RAW_URL = "https://raw.githubusercontent.com/anomalyco/delux-agent/main/rag-raw/dataset-rag.jsonl.gz"
+            print(f"  {YELLOW}Downloading RAG dataset (251 MB from GitHub)...{RESET}")
+            print(f"  {DIM}This may take a while depending on your connection.{RESET}")
+            try:
+                dst = root / "dataset-rag"
+                dst.mkdir(parents=True, exist_ok=True)
+                gz_dst = dst / "entries.jsonl.gz"
+                urllib.request.urlretrieve(_RAW_URL, gz_dst)
+                if gz_dst.stat().st_size > 1000:
+                    import gzip, json
+                    with gzip.open(gz_dst, "rb") as f:
+                        count = sum(1 for _ in f)
+                    (dst / "manifest.json").write_text(json.dumps({"prebuilt": count}, ensure_ascii=False), encoding="utf-8")
+                    print(f"  {GREEN}Installed {count} pre-built trajectories.{RESET}")
+                else:
+                    print(f"  {YELLOW}Downloaded file is invalid ({gz_dst.stat().st_size} bytes). "
+                          f"Dataset RAG skipped.{RESET}")
+                    gz_dst.unlink(missing_ok=True)
+            except Exception as exc:
+                print(f"  {YELLOW}Download failed: {exc}{RESET}")
+                print(f"  {DIM}Dataset RAG skipped (agent will run without few-shot examples).{RESET}")
         elif real_gzip:
             print(f"  {YELLOW}Installing pre-built trajectory RAG...{RESET}")
             try:
@@ -861,7 +881,9 @@ def _import_dataset_rag(root: Path) -> None:
         (project_root / "dataset_hermes" / "data" / "glm-5.1" / "train.parquet"),
         (project_root / "dataset_multiturn" / "data" / "train-00000-of-00001.parquet"),
     ]
-    if not any(p.exists() for p in ds_paths):
+    # Skip paths that are LFS pointers (< 1KB = text pointer, not real parquet)
+    real_paths = [p for p in ds_paths if p.exists() and p.stat().st_size > 1000]
+    if not real_paths:
         print(f"  {DIM}No dataset files found for RAG import.{RESET}")
         return
 
@@ -870,13 +892,12 @@ def _import_dataset_rag(root: Path) -> None:
         from ..dataset_rag import DatasetRAG
         ds = DatasetRAG(root)
         total = 0
-        for p in ds_paths:
-            if p.exists():
-                source = DatasetRAG.SOURCE_HERMES_KIMI if "kimi" in p.name else \
-                        DatasetRAG.SOURCE_HERMES_GLM if "glm" in p.name else \
-                        DatasetRAG.SOURCE_MULTITURN
-                n = ds.import_hermes_parquet(str(p), source)
-                total += n
+        for p in real_paths:
+            source = DatasetRAG.SOURCE_HERMES_KIMI if "kimi" in p.name else \
+                    DatasetRAG.SOURCE_HERMES_GLM if "glm" in p.name else \
+                    DatasetRAG.SOURCE_MULTITURN
+            n = ds.import_hermes_parquet(str(p), source)
+            total += n
         if total:
             print(f"  {GREEN}Imported {total} agent trajectories.{RESET}")
         else:
@@ -926,7 +947,9 @@ def run_setup(root: Path) -> int:
         choice = _ask("  Choice", "q").lower()
 
         if choice == "q" or choice == "exit":
-            _import_dataset_rag(root)
+            # Prompt for RAG dataset import before exiting
+            if _yes_no("  Import agent trajectory dataset into local RAG? (requires pandas)", True):
+                _import_dataset_rag(root)
             print(f"\n  {GREEN}Setup complete.{RESET}")
             _print_context(root)
             print("")

@@ -272,7 +272,7 @@ class GatewaySession:
     active_model_idx: int = 0
     validator_model_idx: int | None = None
     lang: str = "en"
-    max_steps: int = 12
+    max_steps: int = 90
 
     def add_turn(self, user: str, assistant: str) -> None:
         self.history.append({"user": user, "assistant": assistant})

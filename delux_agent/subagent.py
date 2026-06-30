@@ -23,7 +23,7 @@ def spawn_subagent(
     task: str,
     config_root: str | None = None,
     cwd: str | None = None,
-    max_steps: int = 12,
+    max_steps: int = 90,
     timeout: int = 120,
     toolsets: list[str] | None = None,
 ) -> SubagentResult:

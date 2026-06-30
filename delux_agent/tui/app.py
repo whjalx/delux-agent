@@ -128,7 +128,7 @@ class DeluxTUI(App):
     _streaming: bool = False
     _splash_shown: bool = False
 
-    def __init__(self, config, cwd: Path, max_steps: int = 12) -> None:
+    def __init__(self, config, cwd: Path, max_steps: int = 90) -> None:
         super().__init__()
         self._config = config
         self._cwd = cwd

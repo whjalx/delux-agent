@@ -251,7 +251,7 @@ Allowed actions (return exactly one action in XML):
 
 <action>delegate_task</action>
 <task>task description</task>
-<max_steps>12</max_steps>
+<max_steps>90</max_steps>
 <timeout>120</timeout>
 
 <action>cron_add</action>
@@ -512,7 +512,7 @@ Acciones permitidas (devuelve exactamente una acción en XML):
 
 <action>delegate_task</action>
 <task>descripción de la tarea</task>
-<max_steps>12</max_steps>
+<max_steps>90</max_steps>
 <timeout>120</timeout>
 
 <action>cron_add</action>
@@ -993,7 +993,7 @@ def prepare_agent(
     plan_mode: bool = False,
     ephemeral: bool = False,
     system_suffix: str = "",
-    max_steps: int = 12,
+    max_steps: int = 90,
     run_counter: int = 1,
     lang: str = "en",
 ) -> "Agent":
@@ -1038,7 +1038,7 @@ class Agent:
     cwd: Path
     transcript: list[AgentEvent] = field(default_factory=list)
     event_handler: AgentEventHandler | None = None
-    max_steps: int = 12
+    max_steps: int = 90
     ephemeral: bool = False
     plan: object = None
     run_counter: int = 1
@@ -1889,7 +1889,7 @@ Respond ONLY with your diagnosis and the next action to try, in XML format:
             result = delegate_task(
                 str(action.get("task", "")),
                 root, cwd,
-                int(action.get("max_steps", 12)),
+                int(action.get("max_steps", 90)),
                 int(action.get("timeout", 120)),
             )
         elif kind == "cron_add":

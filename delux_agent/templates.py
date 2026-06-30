@@ -271,7 +271,7 @@ def get_action_format_instructions(model_name: str, root: Path) -> str:
         "<action>browser_back</action>\n"
         "<action>browser_close</action>\n"
         "<action>vision_analyze</action>\n<image_path>/path/to/img.png</image_path>\n<prompt>describe</prompt>\n"
-        "<action>delegate_task</action>\n<task>sub-task</task>\n<max_steps>12</max_steps>\n<timeout>120</timeout>\n"
+        "<action>delegate_task</action>\n<task>sub-task</task>\n<max_steps>90</max_steps>\n<timeout>120</timeout>\n"
         "<action>cron_add</action>\n<name>job</name>\n<expression>0 * * * *</expression>\n<command>cmd</command>\n"
         "<action>cron_remove</action>\n<job_id>1</job_id>\n"
         "<action>cron_list</action>\n"
