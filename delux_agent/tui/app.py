@@ -1789,6 +1789,11 @@ NEXT ACTION: <action>final</action>
                 self._write_chat(Text(f"  \u2192 {kind}", style="dim"))
                 self._action_lines += 1
 
+        elif event == "action_info":
+            msg = str(payload.get("message", ""))
+            if msg:
+                self._write_chat(Text(f"  \u2139 {msg}", style="cyan"))
+
         elif event == "shell_output":
             chunk = str(payload.get("chunk", ""))
             if chunk:

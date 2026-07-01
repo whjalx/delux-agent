@@ -625,6 +625,12 @@ class GatewayEventHandler:
                     self._current_diff = [("+", l) for l in content.split("\n")[:12]]
             self._refresh()
 
+        elif event == "action_info":
+            msg = str(payload.get("message", ""))
+            if msg:
+                log.info("action_info: %s", msg[:100])
+            self._refresh()
+
         elif event == "shell_output":
             chunk = str(payload.get("chunk", ""))
             if chunk:

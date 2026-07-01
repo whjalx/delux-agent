@@ -355,7 +355,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     agent = Agent(config=config, cwd=Path(args.cwd).expanduser().resolve(), event_handler=_cli_event_handler)
-    answer = agent.run(prompt, max_steps=args.max_steps, verbose=False)
+    answer = agent.run_with_result(prompt, max_steps=args.max_steps, verbose=False).answer
     print(f"\n  {GREEN}✓{RESET}  {GREEN}{answer}{RESET}")
     return 0
 
@@ -461,12 +461,20 @@ def _cli_event_handler(event: str, payload: dict) -> None:
             elif kind == "computer_keypress":
                 detail = str(action.get("key", ""))
             print(_hl(label, color, detail))
+        elif kind == "info":
+            msg = str(action.get("message", ""))
+            print(f"\n  {CYAN}ℹ{RESET}  {msg}")
         elif kind == "final":
             print(f"\n  ·  {GREEN}{BOLD}{action.get('message', '')}{RESET}")
         elif kind in ("remember", "save_experience", "load_experience"):
             print(_hl(label, DIM, ""))
         else:
             print(_hl(label, DIM, ""))
+
+    elif event == "action_info":
+        msg = str(payload.get("message", ""))
+        if msg:
+            print(f"\n  {CYAN}\u2139{RESET}  {msg}")
 
     elif event == "shell_output":
         chunk = str(payload.get("chunk", ""))

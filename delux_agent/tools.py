@@ -758,8 +758,11 @@ def record_skill(name: str, summary: str, steps: str, root: Path) -> ToolResult:
 
 def remember(note: str, root: Path) -> ToolResult:
     mem_path = root / "memory" / "memory.md"
-    append_note(mem_path, note)
-    return ToolResult(True, f"Saved note to {mem_path}")
+    try:
+        append_note(mem_path, note)
+        return ToolResult(True, f"Saved note to {mem_path}")
+    except ValueError as e:
+        return ToolResult(False, str(e))
 
 
 def run_skill(skill: str, args: str, root: Path, cwd: Path, timeout: int = 30) -> ToolResult:

@@ -232,9 +232,27 @@ def upsert_skill(memory_file: Path, name: str, summary: str) -> None:
     memory_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+EPHEMERAL_PATTERNS = [
+    r'\b(PR|pr|issue|commit|SHA|build)\s*#?\d+',
+    r'\b(phase|step|progress)\s*\d+',
+    r'\b(todo|checklist|pending)\b.*\d',
+    r'\b(fixed|created|deployed|merged|submitted)\b',
+]
+
+
 def append_note(memory_file: Path, note: str) -> None:
+    note_clean = note.strip()
+    # Check for ephemeral patterns
+    for pattern in EPHEMERAL_PATTERNS:
+        if re.search(pattern, note_clean, re.IGNORECASE):
+            raise ValueError(
+                f"Memory save rejected: note contains ephemeral data (matches '{pattern}'). "
+                f"Memory is for permanent facts only. Save: user preferences, environment facts, "
+                f"non-obvious technical solutions, config paths. Do NOT save: task progress, "
+                f"commit SHAs, PR numbers, step counters, or session outcomes."
+            )
     memory = load_memory(memory_file)
-    addition = f"\n- {note.strip()}\n"
+    addition = f"\n- {note_clean}\n"
     if "## Notes" in memory:
         memory = memory.replace("## Notes", "## Notes" + addition, 1)
     else:
